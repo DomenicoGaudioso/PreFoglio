@@ -1,0 +1,69 @@
+Sub Run_PreFoglioPy()
+
+Dim objShell As Object
+Dim PythonExe, PythonScript As String
+Dim wb As Workbook
+Dim sWorkbookPath As String
+Dim FileName As String
+Dim KillFile As String
+Dim i As Integer
+Dim FileName2 As String
+
+    
+    
+    ' cancello il vecchio file "\Output_varieCose_2023.xlsx" se presente
+    sWorkbookPath = ActiveWorkbook.Path & "\Output_varieCose_2023.xlsx"
+    
+    FileName = VBA.FileSystem.Dir(sWorkbookPath)
+    
+    If FileName = VBA.Constants.vbNullString Then
+        MsgBox "File does not exist."
+    Else
+        KillFile = sWorkbookPath
+        Kill KillFile
+    End If
+    
+    
+    Set objShell = VBA.CreateObject("Wscript.Shell")
+
+
+    'lancio python
+    PythonExe = """C:\Users\d.gaudioso\AppData\Local\Programs\Python\Python39\python.exe"""
+    PythonScript = "C:\Studio\prova_variecose\Lavoro\script_ToPreFoglio\Run_PreFoglioPy.py"
+    
+    
+    'objShell.Run PythonExe & PythonScript
+    objShell.Run PythonExe & " " & PythonScript, windowStyle, waitOnReturn
+
+
+    
+    Application.DisplayAlerts = False
+
+
+    ' quando il file excel dei dati è presente nella cartella lo faccio importare
+    For i = 1 To 2000
+        Application.Wait Now + TimeValue("00:00:01")
+        FileName2 = VBA.FileSystem.Dir(sWorkbookPath)
+        
+        If FileName2 = VBA.Constants.vbNullString Then
+            'MsgBox "File does not exist."
+            
+        Else
+            'se esiste apro il file e lo importo
+            Set wb = Workbooks.Open(sWorkbookPath)
+            Windows("Output_varieCose_2023.xlsx").Activate
+            Range("A4:F18000").Select
+            Selection.Copy
+            Windows("SFoglio_nuovo.xlsm").Activate
+            Range("A4").Select
+            ActiveSheet.Paste
+            Windows("Output_varieCose_2023.xlsx").Activate
+            ActiveWindow.Close
+            Exit For
+        End If
+        
+    Next
+    
+    
+    
+End Sub

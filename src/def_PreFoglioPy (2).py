@@ -1,0 +1,1640 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import os
+import xlsxwriter
+
+def delta(listMax, listMin):
+    delta = []
+    for iMax, iMin in zip(listMax, listMin):
+        delta_I = np.abs(np.abs(iMax) - np.abs(iMin))
+        delta.append(delta_I)
+    return delta
+
+def importModel_MIDAS(path = None):
+    #path: percorso dove trovare il file excel di input
+    if path == None:
+        path = "\Out_Midas\00_Info_Modello.xlsx"
+    ## IMPORT DEL FILE EXCEL 
+    # Element
+    dfElement = pd.read_excel(path,
+                        sheet_name = ['Element'],
+                        index_col = 0,
+                        dtype = {"Element": float, "Material":float, "Property":float, "Node1":float, "Node2":float})
+
+
+    dictElement = dfElement['Element'].T.to_dict()
+
+    # Point
+    dfPoint = pd.read_excel(path,
+                        sheet_name = ['Point'],
+                        index_col = 0,
+                        dtype = {"Node": int, "X":float, "Y":float, "Z":float})
+                    
+    dictPoint = dfPoint['Point'].T.to_dict()
+
+    ModelDict = {'Element': dictElement,
+    'Point': dictPoint,
+    }
+
+    return ModelDict
+
+def importOneLoad_MIDAS(path = None):
+    #path: percorso dove trovare il file excel di input
+    if path == None:
+        path = "\Out_Midas\Info_Modello.xlsx"
+    ## IMPORT DEL FILE EXCEL 
+    # Element
+    dfLoad = pd.read_excel(path,
+                        sheet_name = ['Foglio1'],
+                        dtype = {"Elem": float, "Load":str, "Axial":float, "Shear-y":float, "Shear-z":float, "Torsion":float, "Moment-y":float, "Moment-z":float })
+
+    dictLoad = dfLoad['Foglio1'].T.to_dict()
+
+    dictLoad_order = {}
+    for i in dictLoad:
+        keys = list(dictLoad[i].keys())[2:]
+        element = dictLoad[i]['Elem']
+
+        try:
+            dictLoad_order[element]
+        except:
+            dictLoad_order[element] = {}
+            dictLoad_order[element]['I'] = {}
+            dictLoad_order[element]['J'] = {}
+
+        if dictLoad[i]['Part'][0] == 'I':
+            for ikeys in keys:
+                dictLoad_order[element]['I'][ikeys] = dictLoad[i][ikeys]
+                if ikeys == 'Part':
+                    pI = dictLoad_order[element]['I'][ikeys].replace('I[', "").replace(']', "")
+                    dictLoad_order[element]['I'][ikeys] = int(pI)
+                #print(element)
+
+        elif dictLoad[i]['Part'][0] == 'J':
+            for ikeys in keys:
+                #print(ikeys)
+                #print(dictLoad[i][ikeys])
+                dictLoad_order[element]['J'][ikeys] = dictLoad[i][ikeys]
+                if ikeys == 'Part':
+                    pJ = dictLoad_order[element]['J'][ikeys].replace('J[', "").replace(']', "")
+                    dictLoad_order[element]['J'][ikeys] = int(pJ)
+
+    return dictLoad_order 
+
+def importMultiLoad_MIDAS(path = None):
+    #path: percorso dove trovare il file excel di input
+    if path == None:
+        path = "\Out_Midas\Info_Modello.xlsx"
+    ## IMPORT DEL FILE EXCEL 
+    # Element
+    xl = pd.ExcelFile(path) # nome singoli sheet names (fogli in un file excel)
+
+    dictMultiLoad = {}
+    for iFoglio in xl.sheet_names:
+        dfLoad = pd.read_excel(path,
+                            sheet_name = [iFoglio],
+                            dtype = {"Elem": float, "Load":str, "Part":str,	"Component":str, "Axial":float, "Shear-y":float, "Shear-z":float, "Torsion":float, "Moment-y":float, "Moment-z":float })
+
+        dictLoad = dfLoad[iFoglio].T.to_dict()
+
+        dictLoad_order = {'Axial': {}, 'Shear-z': {}, 'Moment-y': {}, 'Torsion': {}}
+        for i in dictLoad:
+            keys = list(dictLoad[i].keys())[2:]
+            element = dictLoad[i]['Elem']
+            refCDS = dictLoad[i]['Component']
+            #print(element, refCDS)
+
+            try:
+                dictLoad_order[refCDS][element]
+            except:
+                dictLoad_order[refCDS][element] = {}
+                dictLoad_order[refCDS][element]['I'] = {}
+                dictLoad_order[refCDS][element]['J'] = {}
+
+            if dictLoad[i]['Part'][0] == 'I':
+                for ikeys in keys:
+                    dictLoad_order[refCDS][element]['I'][ikeys] = dictLoad[i][ikeys]
+                    if ikeys == 'Part':
+                        pI = dictLoad_order[refCDS][element]['I'][ikeys].replace('I[', "").replace(']', "")
+                        dictLoad_order[refCDS][element]['I'][ikeys] = int(pI)
+                    #print(element)
+
+            elif dictLoad[i]['Part'][0] == 'J':
+                for ikeys in keys:
+                    #print(ikeys)
+                    #print(dictLoad[i][ikeys])
+                    dictLoad_order[refCDS][element]['J'][ikeys] = dictLoad[i][ikeys]
+                    if ikeys == 'Part':
+                        pJ = dictLoad_order[refCDS][element]['J'][ikeys].replace('J[', "").replace(']', "")
+                        dictLoad_order[refCDS][element]['J'][ikeys] = int(pJ)
+
+        dictMultiLoad[iFoglio] = dictLoad_order
+
+    return dictMultiLoad
+
+def importMultiLoad2_MIDAS(path = None):
+    #path: percorso dove trovare il file excel di input
+    if path == None:
+        path = "\Out_Midas\Info_Modello.xlsx"
+    ## IMPORT DEL FILE EXCEL 
+    # Element
+    xl = pd.ExcelFile(path) # nome singoli sheet names (fogli in un file excel)
+
+    dictMultiLoad = {}
+    for iFoglio in xl.sheet_names:
+        dfLoad = pd.read_excel(path,
+                            sheet_name = [iFoglio],
+                            dtype = {"Elem": float, "Load":str, "Part":str, "Axial":float, "Shear-y":float, "Shear-z":float, "Torsion":float, "Moment-y":float, "Moment-z":float })
+
+        dictLoad = dfLoad[iFoglio].T.to_dict()
+
+        dictLoad_order = {}
+        for i in dictLoad:
+            keys = list(dictLoad[i].keys())[2:]
+            element = dictLoad[i]['Elem']
+
+            try:
+                dictLoad_order[element]
+            except:
+                dictLoad_order[element] = {}
+                dictLoad_order[element]['I'] = {}
+                dictLoad_order[element]['J'] = {}
+
+            if dictLoad[i]['Part'][0] == 'I':
+                for ikeys in keys:
+                    dictLoad_order[element]['I'][ikeys] = dictLoad[i][ikeys]
+                    if ikeys == 'Part':
+                        pI = dictLoad_order[element]['I'][ikeys].replace('I[', "").replace(']', "")
+                        dictLoad_order[element]['I'][ikeys] = int(pI)
+                    #print(element)
+
+            elif dictLoad[i]['Part'][0] == 'J':
+                for ikeys in keys:
+                    #print(ikeys)
+                    #print(dictLoad[i][ikeys])
+                    dictLoad_order[element]['J'][ikeys] = dictLoad[i][ikeys]
+                    if ikeys == 'Part':
+                        pJ = dictLoad_order[element]['J'][ikeys].replace('J[', "").replace(']', "")
+                        dictLoad_order[element]['J'][ikeys] = int(pJ)
+
+        dictMultiLoad[iFoglio] = dictLoad_order
+
+    return dictMultiLoad
+
+def EleConcio(dictModel):
+
+    dictConci = {}
+    for i in dictModel['Element']:
+        section = dictModel['Element'][i]['Property']
+        if section >= 0:
+            try:
+                dictConci[section]['ele'].append(i)
+            except:
+                dictConci[section] = {'ele': [i]}
+
+    #Per identificare i punti iniziali e finali dei conci
+    for i in dictConci:
+        ele = dictConci[i]['ele']
+        coordI_X = []
+        coordJ_X = []
+        for j in ele:
+            nodeI = dictModel['Element'][j]['Node1']
+            nodeJ = dictModel['Element'][j]['Node2']
+            coordI_X.append(dictModel['Point'][nodeI]['X'])
+            coordJ_X.append(dictModel['Point'][nodeJ]['X'])
+
+        maxI, maxJ = max(coordI_X), max(coordJ_X)
+        minI, minJ = min(coordI_X), min(coordJ_X)
+        if maxI >= maxJ:
+            index = coordI_X.index(maxI)
+            pointEnd = dictModel['Element'][ele[index]]['Node1']
+            dictConci[i]['pointEnd'] = pointEnd
+        elif maxI < maxJ:
+            index = coordJ_X.index(maxJ)
+            pointEnd = dictModel['Element'][ele[index]]['Node2']
+            dictConci[i]['pointEnd'] = pointEnd
+
+        if minI <= minJ:
+            index = coordI_X.index(minI)
+            pointStart = dictModel['Element'][ele[index]]['Node1']
+            dictConci[i]['pointStart'] = pointStart
+        elif minI > minJ:
+            index = coordJ_X.index(minJ)
+            pointStart = dictModel['Element'][ele[index]]['Node2']
+            dictConci[i]['pointStart'] = pointStart
+        
+        dictConci[i]['Sollecitazioni'] = {'Forza Normale': {'G1+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G1-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
+        'G2+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G2-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
+        'R+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'R-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'MQ+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'MQ-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'Md+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Md-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'Mf+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Mf-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'T+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'T-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'C+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'C-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}}, 
+
+        'Momento flettente': {'G1+':{}, 'G1-':{},
+        'G2+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G2-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'R+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'R-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'MQ+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'MQ-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'Md+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Md-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'Mf+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Mf-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'T+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'T-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'C+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'C-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}}, 
+
+        'Taglio': {'G1+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G1-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
+        'G2+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G2-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'R+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'R-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'MQ+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'MQ-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'Md+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Md-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'Mf+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Mf-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'T+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'T-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'C+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'C-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}}, 
+
+        'Momento torcente': {'G1+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G1-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
+        'G2+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G2-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'R+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'R-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'MQ+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'MQ-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'Md+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Md-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'Mf+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Mf-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'T+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'T-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
+        'C+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'C-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}}}
+
+    return dictConci
+
+def PlotConci(dictModel, dictConci):
+    
+    for i in dictConci:
+        pI = dictConci[i]['pointStart']
+        pJ = dictConci[i]['pointEnd']
+
+        Xi = dictModel['Point'][pI]['X']
+        Yi = dictModel['Point'][pI]['Y']
+        Xj = dictModel['Point'][pJ]['X']
+        Yj = dictModel['Point'][pJ]['Y']
+        plt.plot( np.array([ Xi, Xj]), np.array([ Yi, Yj]), '-o')
+    plt.show()
+    return 
+
+def Plot_CDS(dictModel, dictLoad):
+    
+    for i in dictLoad:
+        print(dictLoad[i])
+        #point I and J
+        pI = dictLoad[i]['I']['Part']
+        pJ = dictLoad[i]['J']['Part']
+        #print(pI)
+        #cds I
+        Ni = dictLoad[i]['I']['Axial']
+        Vyi = dictLoad[i]['I']['Shear-y']
+        Vzi = dictLoad[i]['I']['Shear-z']
+        Ti = dictLoad[i]['I']['Torsion']
+        Myi = dictLoad[i]['I']['Moment-y']
+        Mzi = dictLoad[i]['I']['Moment-z']
+        #cds J
+        Nj = dictLoad[i]['J']['Axial']
+        Vyj = dictLoad[i]['J']['Shear-y']
+        Vzj = dictLoad[i]['J']['Shear-z']
+        Tj = dictLoad[i]['J']['Torsion']
+        Myj = dictLoad[i]['J']['Moment-y']
+        Mzj = dictLoad[i]['J']['Moment-z']
+        #coordinate X point I and J
+        Xi = dictModel['Point'][pI]['X']
+        Xj = dictModel['Point'][pJ]['X']
+        #Momento
+        plt.plot( np.array([ Xi, Xj]), np.array([ Myi, Myj]), '-o')
+    plt.show()
+    return 
+
+def Plot_CDS_concio(dictModel, dictLoad, dictConci):
+    
+    for j in dictConci:
+        for i in dictConci[j]['ele']:
+            #point I and J
+            pI = dictLoad[i]['I']['Part']
+            pJ = dictLoad[i]['J']['Part']
+            #print(pI)
+            #cds I
+            Ni = dictLoad[i]['I']['Axial']
+            Vyi = dictLoad[i]['I']['Shear-y']
+            Vzi = dictLoad[i]['I']['Shear-z']
+            Ti = dictLoad[i]['I']['Torsion']
+            Myi = dictLoad[i]['I']['Moment-y']
+            Mzi = dictLoad[i]['I']['Moment-z']
+            #cds J
+            Nj = dictLoad[i]['J']['Axial']
+            Vyj = dictLoad[i]['J']['Shear-y']
+            Vzj = dictLoad[i]['J']['Shear-z']
+            Tj = dictLoad[i]['J']['Torsion']
+            Myj = dictLoad[i]['J']['Moment-y']
+            Mzj = dictLoad[i]['J']['Moment-z']
+            #coordinate X point I and J
+            Xi = dictModel['Point'][pI]['X']
+            Xj = dictModel['Point'][pJ]['X']
+        #Momento
+            plt.plot( np.array([ Xi, Xj]), np.array([ Myi, Myj]), '-o')
+    plt.show()
+    return 
+
+def AssignCDS_concio(dictModel, dictConci, dictLoad, NameCDS):
+    cdsNameMax = NameCDS + '+'
+    cdsNameMin = NameCDS + '-'
+    for j in dictConci:
+        N_I, V_I, M_I, T_I = [], [], [], []
+        N_J, V_J, M_J, T_J = [], [], [], []
+        for i in dictConci[j]['ele']:
+            #point I and J
+            pI = dictLoad[i]['I']['Part']
+            pJ = dictLoad[i]['J']['Part']
+            #print(pI)
+            #cds I
+            Ni = dictLoad[i]['I']['Axial']
+            N_I.append(Ni)
+            Vyi = abs(dictLoad[i]['I']['Shear-y'])
+            Vzi = abs(dictLoad[i]['I']['Shear-z'])
+            V_I.append(Vzi)
+            Ti = dictLoad[i]['I']['Torsion']
+            T_I.append(Ti)
+            Myi = dictLoad[i]['I']['Moment-y']
+            M_I.append(Myi)
+            Mzi = dictLoad[i]['I']['Moment-z']
+            #cds J
+            Nj = dictLoad[i]['J']['Axial']
+            N_J.append(Nj)
+            Vyj = abs(dictLoad[i]['J']['Shear-y'])
+            Vzj = abs(dictLoad[i]['J']['Shear-z'])
+            V_J.append(Vzj)
+            Tj = dictLoad[i]['J']['Torsion']
+            T_J.append(Tj)
+            Myj = dictLoad[i]['J']['Moment-y']
+            M_J.append(Myj)
+            Mzj = dictLoad[i]['J']['Moment-z']
+            #coordinate X point I and J
+            Xi = dictModel['Point'][pI]['X']
+            Xj = dictModel['Point'][pJ]['X']
+
+            #Max and Min
+            ####################################### Forza Normale
+            Nmax = max(max(N_I), max(N_J))
+            Nmin = min(min(N_I), min(N_J))
+            try:
+                indexMax = N_I.index(Nmax)
+                T = V_I[indexMax]
+                Mf = M_I[indexMax]
+                Mt = T_I[indexMax]
+            except:
+                indexMax = N_J.index(Nmax)
+                T = V_J[indexMax]
+                Mf = M_J[indexMax]
+                Mt = T_J[indexMax]
+            
+            N_ele = dictConci[j]['ele'][indexMax]
+            dictConci[j]['Sollecitazioni']['Forza Normale'][cdsNameMax] = {'N_el': N_ele, 'N': Nmax, 'T': T, 'Mf': Mf, 'Mt': Mt}
+
+            try:
+                indexMax = N_I.index(Nmin)
+                T = V_I[indexMax]
+                Mf = M_I[indexMax]
+                Mt = T_I[indexMax]
+            except:
+                indexMax = N_J.index(Nmin)
+                T = V_J[indexMax]
+                Mf = M_J[indexMax]
+                Mt = T_J[indexMax]
+            
+            N_ele = dictConci[j]['ele'][indexMax]
+            dictConci[j]['Sollecitazioni']['Forza Normale'][cdsNameMin] = {'N_el': N_ele, 'N': Nmin, 'T': T, 'Mf': Mf, 'Mt': Mt}
+
+
+            ####################################### Taglio
+            Vmax = max(max(V_I), max(V_J))
+            Vmin = min(min(V_I), min(V_J))
+
+            try:
+                indexMaxi = V_I.index(Vmax)
+                Ni = N_I[indexMaxi]
+                Mfi = M_I[indexMaxi]
+                Mti = T_I[indexMaxi]
+
+                indexMaxj = V_J.index(Vmax)
+                Nj = N_J[indexMaxj]
+                Mfj = M_J[indexMaxj]
+                Mtj = T_J[indexMaxj]
+            
+            except:
+                print('No I and J')
+            
+            if Mfi >
+            N_ele = dictConci[j]['ele'][indexMax]
+            dictConci[j]['Sollecitazioni']['Taglio'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': Vmax, 'Mf': Mf, 'Mt': Mt}
+
+            try:
+                indexMax = V_I.index(Vmin)
+                N = N_I[indexMax]
+                Mf = M_I[indexMax]
+                Mt = T_I[indexMax]
+            except:
+                indexMax = V_J.index(Vmin)
+                N = N_J[indexMax]
+                Mf = M_J[indexMax]
+                Mt = T_J[indexMax]
+            
+            N_ele = dictConci[j]['ele'][indexMax]
+            dictConci[j]['Sollecitazioni']['Taglio'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': Vmin, 'Mf': Mf, 'Mt': Mt}
+
+            ####################################### Momento flettente
+            Mmax = max(max(M_I), max(M_J))
+            Mmin = min(min(M_I), min(M_J))
+
+            try:
+                indexMax = M_I.index(Mmax)
+                N = N_I[indexMax]
+                T = V_I[indexMax]
+                Mt = T_I[indexMax]
+            except:
+                indexMax = M_J.index(Mmax)
+                N = N_J[indexMax]
+                T = V_J[indexMax]
+                Mt = T_J[indexMax]
+            
+            N_ele = dictConci[j]['ele'][indexMax]
+            dictConci[j]['Sollecitazioni']['Momento flettente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': T, 'Mf': Mmax, 'Mt': Mt}
+
+            try:
+                indexMax = M_I.index(Mmin)
+                N = N_I[indexMax]
+                T = V_I[indexMax]
+                Mt = T_I[indexMax]
+            except:
+                indexMax = M_J.index(Mmin)
+                N = N_J[indexMax]
+                T = V_J[indexMax]
+                Mt = T_J[indexMax]
+            
+            N_ele = dictConci[j]['ele'][indexMax]
+            #print('cdsName', cdsNameMin)
+            dictConci[j]['Sollecitazioni']['Momento flettente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': T, 'Mf': Mmin, 'Mt': Mt}
+
+            ####################################### Torsione
+            Tmax = max(max(T_I), max(T_J))
+            Tmin = min(min(T_I), min(T_J))
+
+            try:
+                indexMax = M_I.index(Mmax)
+                N = N_I[indexMax]
+                T = V_I[indexMax]
+                Mf = M_I[indexMax]
+            except:
+                indexMax = M_J.index(Mmax)
+                N = N_J[indexMax]
+                T = V_J[indexMax]
+                Mf = M_J[indexMax]
+            
+            N_ele = dictConci[j]['ele'][indexMax]
+            dictConci[j]['Sollecitazioni']['Momento torcente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': T, 'Mf': Mf, 'Mt': Tmax}
+
+            try:
+                indexMax = M_I.index(Mmin)
+                N = N_I[indexMax]
+                T = V_I[indexMax]
+                Mf = M_I[indexMax]
+            except:
+                indexMax = M_J.index(Mmin)
+                N = N_J[indexMax]
+                T = V_J[indexMax]
+                Mf = M_J[indexMax]
+            
+            N_ele = dictConci[j]['ele'][indexMax]
+            dictConci[j]['Sollecitazioni']['Momento torcente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': T, 'Mf': Mf, 'Mt': Tmin}
+
+    return dictConci
+
+def AssignCDSMulti_concio(dictModel, dictConci, dictLoad, NameCDS):
+    ## Funzione con i file excel con più shet dentro
+    cdsNameMax = NameCDS + '+'
+    cdsNameMin = NameCDS + '-'
+
+    nameFogli = list(dictLoad.keys())
+    refCDS = list(dictLoad[nameFogli[0]].keys())
+
+    
+    dictMultiLoad = {}
+    for i in dictConci:
+        dictMultiLoad[i] = {'ele':dictConci[i]['ele'], 
+        'Axial': { 'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}, 
+        'Shear-z': { 'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}, 
+        'Moment-y': { 'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}, 
+        'Torsion': { 'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}, 
+        }
+
+    for iCDS in refCDS: # se non c'e la forza normale mettere refCDS[1:] 
+        for iNameF in nameFogli:
+            for j in dictConci:
+                N_I, V_I, M_I, T_I = [], [], [], []
+                N_J, V_J, M_J, T_J = [], [], [], []
+                #print(dictConci[j]['ele'])
+                for i in dictConci[j]['ele']:
+                    #print(i)
+                    
+                    #point I and J
+                    pI = dictLoad[iNameF][iCDS][i]['I']['Part']
+                    pJ = dictLoad[iNameF][iCDS][i]['J']['Part']
+                    #print(pI)
+                    #cds I
+                    Ni = dictLoad[iNameF][iCDS][i]['I']['Axial']
+                    N_I.append(Ni)
+                    Vyi = abs(dictLoad[iNameF][iCDS][i]['I']['Shear-y'])
+                    Vzi = abs(dictLoad[iNameF][iCDS][i]['I']['Shear-z'])
+                    V_I.append(Vzi)
+                    Ti = dictLoad[iNameF][iCDS][i]['I']['Torsion']
+                    T_I.append(Ti)
+                    Myi = dictLoad[iNameF][iCDS][i]['I']['Moment-y']
+                    M_I.append(Myi)
+                    Mzi = dictLoad[iNameF][iCDS][i]['I']['Moment-z']
+                    #cds J
+                    Nj = dictLoad[iNameF][iCDS][i]['J']['Axial']
+                    N_J.append(Nj)
+                    Vyj = abs(dictLoad[iNameF][iCDS][i]['J']['Shear-y'])
+                    Vzj = abs(dictLoad[iNameF][iCDS][i]['J']['Shear-z'])
+                    V_J.append(Vzj)
+                    Tj = dictLoad[iNameF][iCDS][i]['J']['Torsion']
+                    T_J.append(Tj)
+                    Myj = dictLoad[iNameF][iCDS][i]['J']['Moment-y']
+                    M_J.append(Myj)
+                    Mzj = dictLoad[iNameF][iCDS][i]['J']['Moment-z']
+                    #coordinate X point I and J
+                    Xi = dictModel['Point'][pI]['X']
+                    Xj = dictModel['Point'][pJ]['X']
+
+                dictMultiLoad[j][iCDS]['Axial']['I'].append(N_I)
+                dictMultiLoad[j][iCDS]['Shear-z']['I'].append(V_I)
+                dictMultiLoad[j][iCDS]['Moment-y']['I'].append(M_I)
+                dictMultiLoad[j][iCDS]['Torsion']['I'].append(T_I)
+                dictMultiLoad[j][iCDS]['Axial']['J'].append(N_J)
+                dictMultiLoad[j][iCDS]['Shear-z']['J'].append(V_J)
+                dictMultiLoad[j][iCDS]['Moment-y']['J'].append(M_J)
+                dictMultiLoad[j][iCDS]['Torsion']['J'].append(T_J)
+   
+    for i in dictConci:
+        #Max and Min
+        ####################################### Forza Normale
+        Nref_NI = np.array(dictMultiLoad[i]['Axial']['Axial']['I']).T
+        Nref_NJ = np.array(dictMultiLoad[i]['Axial']['Axial']['J']).T
+
+        VI = np.array(dictMultiLoad[i]['Axial']['Shear-z']['I']).T
+        MI = np.array(dictMultiLoad[i]['Axial']['Moment-y']['I']).T
+        TI = np.array(dictMultiLoad[i]['Axial']['Torsion']['I']).T
+
+        VJ = np.array(dictMultiLoad[i]['Axial']['Shear-z']['J']).T
+        MJ = np.array(dictMultiLoad[i]['Axial']['Moment-y']['J']).T
+        TJ = np.array(dictMultiLoad[i]['Axial']['Torsion']['J']).T
+
+        #INVILUPPO FORZA NORMALE
+        NmaxInv_I = np.amax(Nref_NI).tolist()
+        NmaxInv_J = np.amax(Nref_NJ).tolist()
+        NminInv_I = np.amin(Nref_NI).tolist()
+        NminInv_J = np.amin(Nref_NJ).tolist()
+
+
+        Nmax = max(NmaxInv_I, NmaxInv_J)
+        Nmin = min(NminInv_J, NminInv_J)
+        # devo trovare due indici, il primo lo trovo dall'inviluppo e mi indica
+        # quale elemento del concio è più sollecitato, 
+        #poi devo trovare in che combinazione si trova
+
+        try:
+            res = np.where(Nref_NI == Nmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            V = VI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Nref_NJ == Nmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            V = VJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        #print('VJ', VJ)
+        #print('ele', dictConci[j]['ele'])
+        #print('index list', indexList)
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Forza Normale'][cdsNameMax] = {'N_el': N_ele, 'N': Nmin, 'T': V, 'Mf': Mf, 'Mt': Mt}
+
+        try:
+            res = np.where(Nref_NI == Nmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            V = VI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Nref_NJ == Nmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            V = VJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Forza Normale'][cdsNameMin] = {'N_el': N_ele, 'N': Nmin, 'T': V, 'Mf': Mf, 'Mt': Mt}
+        
+        ####################################### Taglio
+        Vref_VI = np.array(dictMultiLoad[i]['Shear-z']['Shear-z']['I']).T
+        Vref_VJ = np.array(dictMultiLoad[i]['Shear-z']['Shear-z']['J']).T
+
+        NI = np.array(dictMultiLoad[i]['Shear-z']['Axial']['I']).T
+        MI = np.array(dictMultiLoad[i]['Shear-z']['Moment-y']['I']).T
+        TI = np.array(dictMultiLoad[i]['Shear-z']['Torsion']['I']).T
+
+        NJ = np.array(dictMultiLoad[i]['Shear-z']['Axial']['J']).T
+        MJ = np.array(dictMultiLoad[i]['Shear-z']['Moment-y']['J']).T
+        TJ = np.array(dictMultiLoad[i]['Shear-z']['Torsion']['J']).T
+
+        #INVILUPPO TAGLIO
+        VmaxInv_I = np.amax(Vref_VI).tolist()
+        VmaxInv_J = np.amax(Vref_VJ).tolist()
+        VminInv_I = np.amin(Vref_VI).tolist()
+        VminInv_J = np.amin(Vref_VJ).tolist()
+
+
+        Vmax = max(VmaxInv_I, VmaxInv_J)
+        Vmin = min(VminInv_J, VminInv_J)
+        # devo trovare due indici, il primo lo trovo dall'inviluppo e mi indica
+        # quale elemento del concio è più sollecitato, 
+        #poi devo trovare in che combinazione si trova
+
+        try:
+            res = np.where(Vref_VI == Vmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Vref_VJ == Vmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Taglio'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': Vmax, 'Mf': Mf, 'Mt': Mt}
+
+        try:
+            res = np.where(Vref_VI == Vmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Vref_VJ == Vmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Taglio'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': Vmin, 'Mf': Mf, 'Mt': Mt}
+
+        ####################################### Momento flettente
+        Mref_MI = np.array(dictMultiLoad[i]['Moment-y']['Moment-y']['I']).T
+        Mref_MJ = np.array(dictMultiLoad[i]['Moment-y']['Moment-y']['J']).T
+
+        NI = np.array(dictMultiLoad[i]['Moment-y']['Axial']['I']).T
+        VI = np.array(dictMultiLoad[i]['Moment-y']['Shear-z']['I']).T
+        TI = np.array(dictMultiLoad[i]['Moment-y']['Torsion']['I']).T
+
+        NJ = np.array(dictMultiLoad[i]['Moment-y']['Axial']['J']).T
+        VJ = np.array(dictMultiLoad[i]['Moment-y']['Shear-z']['J']).T
+        TJ = np.array(dictMultiLoad[i]['Moment-y']['Torsion']['J']).T
+
+        #INVILUPPO 
+        MmaxInv_I = np.amax(Mref_MI).tolist()
+        MmaxInv_J = np.amax(Mref_MJ).tolist()
+        MminInv_I = np.amin(Mref_MI).tolist()
+        MminInv_J = np.amin(Mref_MJ).tolist()
+
+
+        Mmax = max(MmaxInv_I, MmaxInv_J)
+        Mmin = min(MminInv_J, MminInv_J)
+        # devo trovare due indici, il primo lo trovo dall'inviluppo e mi indica
+        # quale elemento del concio è più sollecitato, 
+        #poi devo trovare in che combinazione si trova
+
+        try:
+            res = np.where(Mref_MI == Mmax)
+            #print('Ciao', res)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            V = VI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Mref_MJ == Mmax)
+            #print('Ciao', res)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            V = VJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        #print('elementi', dictConci[i]['ele'])
+        #print('Momento max I', Mref_MI)
+        #print('Momento max J', Mref_MJ)
+        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mmax, 'Mt': Mt}
+
+        try:
+            res = np.where(Mref_MI == Mmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            V = VI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Mref_MJ == Mmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            V = VJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mmin, 'Mt': Mt}
+
+        ####################################### Torsione
+        Mtref_MtI = np.array(dictMultiLoad[i]['Torsion']['Torsion']['I']).T
+        Mtref_MtJ = np.array(dictMultiLoad[i]['Torsion']['Torsion']['J']).T
+
+        NI = np.array(dictMultiLoad[i]['Torsion']['Axial']['I']).T
+        VI = np.array(dictMultiLoad[i]['Torsion']['Shear-z']['I']).T
+        MI = np.array(dictMultiLoad[i]['Torsion']['Moment-y']['I']).T
+
+        NJ = np.array(dictMultiLoad[i]['Torsion']['Axial']['J']).T
+        VJ = np.array(dictMultiLoad[i]['Torsion']['Shear-z']['J']).T
+        MJ = np.array(dictMultiLoad[i]['Torsion']['Moment-y']['J']).T
+
+        #INVILUPPO 
+        MtmaxInv_I = np.amax(Mtref_MtI).tolist()
+        MtmaxInv_J = np.amax(Mtref_MtJ).tolist()
+        MtminInv_I = np.amin(Mtref_MtI).tolist()
+        MtminInv_J = np.amin(Mtref_MtJ).tolist()
+
+
+        Tmax = max(MtmaxInv_I, MtmaxInv_J)
+        Tmin = min(MtminInv_J, MtminInv_J)
+        # devo trovare due indici, il primo lo trovo dall'inviluppo e mi indica
+        # quale elemento del concio è più sollecitato, 
+        #poi devo trovare in che combinazione si trova
+
+        try:
+            res = np.where(Mtref_MtI == Tmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            V = VI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+        except:
+            res = np.where(Mtref_MtJ == Tmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            V = VJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Momento torcente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Tmax}
+
+        try:
+            res = np.where(Mtref_MtI == Tmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            V = VI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+        except:
+            res = np.where(Mtref_MtJ == Tmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            V = VJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Momento torcente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Tmin}
+    
+    return dictConci
+
+def AssignCDSMulti2_concio(dictModel, dictConci, dictLoad, NameCDS):
+    ## Funzione con i file excel con più shet dentro
+    cdsNameMax = NameCDS + '+'
+    cdsNameMin = NameCDS + '-'
+
+    nameFogli = list(dictLoad.keys())
+    
+    dictMultiLoad = {}
+    for i in dictConci:
+        dictMultiLoad[i] = {'ele':dictConci[i]['ele'], 
+        'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}
+
+    for iNameF in nameFogli:
+        for j in dictConci:
+            N_I, V_I, M_I, T_I = [], [], [], []
+            N_J, V_J, M_J, T_J = [], [], [], []
+            for i in dictConci[j]['ele']:
+                #point I and J
+                #pI = dictLoad[iNameF][i]['I']['Part']
+                #pJ = dictLoad[iNameF][i]['J']['Part']
+                #print(pI)
+                #cds I
+                Ni = dictLoad[iNameF][i]['I']['Axial']
+                N_I.append(Ni)
+                Vyi = abs(dictLoad[iNameF][i]['I']['Shear-y'])
+                Vzi = abs(dictLoad[iNameF][i]['I']['Shear-z'])
+                V_I.append(Vzi)
+                Ti = dictLoad[iNameF][i]['I']['Torsion']
+                T_I.append(Ti)
+                Myi = dictLoad[iNameF][i]['I']['Moment-y']
+                M_I.append(Myi)
+                Mzi = dictLoad[iNameF][i]['I']['Moment-z']
+                #cds J
+                Nj = dictLoad[iNameF][i]['J']['Axial']
+                N_J.append(Nj)
+                Vyj = abs(dictLoad[iNameF][i]['J']['Shear-y'])
+                Vzj = abs(dictLoad[iNameF][i]['J']['Shear-z'])
+                V_J.append(Vzj)
+                Tj = dictLoad[iNameF][i]['J']['Torsion']
+                T_J.append(Tj)
+                Myj = dictLoad[iNameF][i]['J']['Moment-y']
+                M_J.append(Myj)
+                Mzj = dictLoad[iNameF][i]['J']['Moment-z']
+                #coordinate X point I and J
+                #Xi = dictModel['Point'][pI]['X']
+                #Xj = dictModel['Point'][pJ]['X']
+
+            dictMultiLoad[j]['Axial']['I'].append(N_I)
+            dictMultiLoad[j]['Shear-z']['I'].append(V_I)
+            dictMultiLoad[j]['Moment-y']['I'].append(M_I)
+            dictMultiLoad[j]['Torsion']['I'].append(T_I)
+            dictMultiLoad[j]['Axial']['J'].append(N_J)
+            dictMultiLoad[j]['Shear-z']['J'].append(V_J)
+            dictMultiLoad[j]['Moment-y']['J'].append(M_J)
+            dictMultiLoad[j]['Torsion']['J'].append(T_J)
+   
+    for i in dictConci:
+        #Max and Min
+        ####################################### Forza Normale
+        Nref_NI = np.array(dictMultiLoad[i]['Axial']['I']).T
+        Nref_NJ = np.array(dictMultiLoad[i]['Axial']['J']).T
+
+        VI = np.array(dictMultiLoad[i]['Shear-z']['I']).T
+        MI = np.array(dictMultiLoad[i]['Moment-y']['I']).T
+        TI = np.array(dictMultiLoad[i]['Torsion']['I']).T
+
+        VJ = np.array(dictMultiLoad[i]['Shear-z']['J']).T
+        MJ = np.array(dictMultiLoad[i]['Moment-y']['J']).T
+        TJ = np.array(dictMultiLoad[i]['Torsion']['J']).T
+
+        #INVILUPPO
+        NmaxInv_I = np.amax(Nref_NI).tolist()
+        NmaxInv_J = np.amax(Nref_NJ).tolist()
+        NminInv_I = np.amin(Nref_NI).tolist()
+        NminInv_J = np.amin(Nref_NJ).tolist()
+
+
+        Nmax = max(NmaxInv_I, NmaxInv_J)
+        Nmin = min(NminInv_J, NminInv_J)
+        # devo trovare due indici, il primo lo trovo dall'inviluppo e mi indica
+        # quale elemento del concio è più sollecitato, 
+        #poi devo trovare in che combinazione si trova
+
+        try:
+            res = np.where(Nref_NI == Nmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            V = VI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Nref_NJ == Nmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            V = VJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Forza Normale'][cdsNameMax] = {'N_el': N_ele, 'N': Nmin, 'T': V, 'Mf': Mf, 'Mt': Mt}
+
+        try:
+            res = np.where(Nref_NI == Nmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            V = VI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Nref_NJ == Nmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            V = VJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Forza Normale'][cdsNameMin] = {'N_el': N_ele, 'N': Nmin, 'T': V, 'Mf': Mf, 'Mt': Mt}
+        
+        
+        ####################################### Taglio
+        Vref_VI = np.array(dictMultiLoad[i]['Shear-z']['I']).T
+        Vref_VJ = np.array(dictMultiLoad[i]['Shear-z']['J']).T
+
+        NI = np.array(dictMultiLoad[i]['Axial']['I']).T
+        MI = np.array(dictMultiLoad[i]['Moment-y']['I']).T
+        TI = np.array(dictMultiLoad[i]['Torsion']['I']).T
+
+        NJ = np.array(dictMultiLoad[i]['Axial']['J']).T
+        MJ = np.array(dictMultiLoad[i]['Moment-y']['J']).T
+        TJ = np.array(dictMultiLoad[i]['Torsion']['J']).T
+
+        #INVILUPPO TAGLIO
+        VmaxInv_I = np.amax(Vref_VI).tolist()
+        VmaxInv_J = np.amax(Vref_VJ).tolist()
+        VminInv_I = np.amin(Vref_VI).tolist()
+        VminInv_J = np.amin(Vref_VJ).tolist()
+
+
+        Vmax = max(VmaxInv_I, VmaxInv_J)
+        Vmin = min(VminInv_J, VminInv_J)
+        # devo trovare due indici, il primo lo trovo dall'inviluppo e mi indica
+        # quale elemento del concio è più sollecitato, 
+        #poi devo trovare in che combinazione si trova
+
+        try:
+            res = np.where(Vref_VI == Vmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Vref_VJ == Vmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Taglio'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': Vmax, 'Mf': Mf, 'Mt': Mt}
+
+        try:
+            res = np.where(Vref_VI == Vmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Vref_VJ == Vmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Taglio'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': Vmin, 'Mf': Mf, 'Mt': Mt}
+
+        ####################################### Momento flettente
+        Mref_MI = np.array(dictMultiLoad[i]['Moment-y']['I']).T
+        Mref_MJ = np.array(dictMultiLoad[i]['Moment-y']['J']).T
+
+        NI = np.array(dictMultiLoad[i]['Axial']['I']).T
+        VI = np.array(dictMultiLoad[i]['Shear-z']['I']).T
+        TI = np.array(dictMultiLoad[i]['Torsion']['I']).T
+
+        NJ = np.array(dictMultiLoad[i]['Axial']['J']).T
+        VJ = np.array(dictMultiLoad[i]['Shear-z']['J']).T
+        TJ = np.array(dictMultiLoad[i]['Torsion']['J']).T
+
+        #INVILUPPO 
+        MmaxInv_I = np.amax(Mref_MI).tolist()
+        MmaxInv_J = np.amax(Mref_MJ).tolist()
+        MminInv_I = np.amin(Mref_MI).tolist()
+        MminInv_J = np.amin(Mref_MJ).tolist()
+
+
+        Mmax = max(MmaxInv_I, MmaxInv_J)
+        Mmin = min(MminInv_J, MminInv_J)
+        # devo trovare due indici, il primo lo trovo dall'inviluppo e mi indica
+        # quale elemento del concio è più sollecitato, 
+        #poi devo trovare in che combinazione si trova
+
+        try:
+            res = np.where(Mref_MI == Mmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            V = VI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Mref_MJ == Mmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            V = VJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mmax, 'Mt': Mt}
+
+        try:
+            res = np.where(Mref_MI == Mmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            V = VI[indexList][indexComb]
+            Mt = TI[indexList][indexComb]
+        except:
+            res = np.where(Mref_MJ == Mmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            V = VJ[indexList][indexComb]
+            Mt = TJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mmin, 'Mt': Mt}
+
+        ####################################### Torsione
+        Mtref_MtI = np.array(dictMultiLoad[i]['Torsion']['I']).T
+        Mtref_MtJ = np.array(dictMultiLoad[i]['Torsion']['J']).T
+
+        NI = np.array(dictMultiLoad[i]['Axial']['I']).T
+        VI = np.array(dictMultiLoad[i]['Shear-z']['I']).T
+        MI = np.array(dictMultiLoad[i]['Moment-y']['I']).T
+
+        NJ = np.array(dictMultiLoad[i]['Axial']['J']).T
+        VJ = np.array(dictMultiLoad[i]['Shear-z']['J']).T
+        MJ = np.array(dictMultiLoad[i]['Moment-y']['J']).T
+
+        #INVILUPPO 
+        MtmaxInv_I = np.amax(Mtref_MtI).tolist()
+        MtmaxInv_J = np.amax(Mtref_MtJ).tolist()
+        MtminInv_I = np.amin(Mtref_MtI).tolist()
+        MtminInv_J = np.amin(Mtref_MtJ).tolist()
+
+
+        Tmax = max(MtmaxInv_I, MtmaxInv_J)
+        Tmin = min(MtminInv_J, MtminInv_J)
+        # devo trovare due indici, il primo lo trovo dall'inviluppo e mi indica
+        # quale elemento del concio è più sollecitato, 
+        #poi devo trovare in che combinazione si trova
+
+        try:
+            res = np.where(Mtref_MtI == Tmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            V = VI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+        except:
+            res = np.where(Mtref_MtJ == Tmax)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            V = VJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Momento torcente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Tmax}
+
+        try:
+            res = np.where(Mtref_MtI == Tmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NI[indexList][indexComb]
+            V = VI[indexList][indexComb]
+            Mf = MI[indexList][indexComb]
+        except:
+            res = np.where(Mtref_MtJ == Tmin)
+            indexList = res[0][0] # per trovare l'elmento corrispondente
+            indexComb = res[1][0] # identifica in quale combinazione (lista trovare il max) 
+            N = NJ[indexList][indexComb]
+            V = VJ[indexList][indexComb]
+            Mf = MJ[indexList][indexComb]
+        
+        N_ele = dictConci[i]['ele'][indexList]
+        dictConci[i]['Sollecitazioni']['Momento torcente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Tmin}
+    
+    return dictConci
+
+def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
+    ## Funzione con i file excel con più shet dentro
+    cdsNameMax = NameCDS + '+'
+    cdsNameMin = NameCDS + '-'
+
+    #print(dictLoad)
+    nameFogli = list(dictLoad.keys())
+    refCDS = list(dictLoad[nameFogli[0]].keys())
+
+    
+    dictMultiLoad = {}
+    for i in dictConci:
+        dictMultiLoad[i] = {'ele':dictConci[i]['ele'], 
+        'Axial': { 'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}, 
+        'Shear-z': { 'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}, 
+        'Moment-y': { 'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}, 
+        'Torsion': { 'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}, 
+        }
+
+    for iCDS in refCDS: #dobbiamo aggiungere ancora la forza normale 
+        for iNameF in nameFogli:
+            for j in dictConci:
+                N_I, V_I, M_I, T_I = [], [], [], []
+                N_J, V_J, M_J, T_J = [], [], [], []
+                for i in dictConci[j]['ele']:
+                    #point I and J
+                    pI = dictLoad[iNameF][iCDS][i]['I']['Part']
+                    pJ = dictLoad[iNameF][iCDS][i]['J']['Part']
+                    #print(pI)
+                    #cds I
+                    Ni = dictLoad[iNameF][iCDS][i]['I']['Axial']
+                    N_I.append(Ni)
+                    Vyi = abs(dictLoad[iNameF][iCDS][i]['I']['Shear-y'])
+                    Vzi = abs(dictLoad[iNameF][iCDS][i]['I']['Shear-z'])
+                    V_I.append(Vzi)
+                    #print('vzi', Ni)
+                    Ti = dictLoad[iNameF][iCDS][i]['I']['Torsion']
+                    T_I.append(Ti)
+                    Myi = dictLoad[iNameF][iCDS][i]['I']['Moment-y']
+                    M_I.append(Myi)
+                    Mzi = dictLoad[iNameF][iCDS][i]['I']['Moment-z']
+                    #cds J
+                    Nj = dictLoad[iNameF][iCDS][i]['J']['Axial']
+                    N_J.append(Nj)
+                    Vyj = abs(dictLoad[iNameF][iCDS][i]['J']['Shear-y'])
+                    Vzj = abs(dictLoad[iNameF][iCDS][i]['J']['Shear-z'])
+                    V_J.append(Vzj)
+                    Tj = dictLoad[iNameF][iCDS][i]['J']['Torsion']
+                    T_J.append(Tj)
+                    Myj = dictLoad[iNameF][iCDS][i]['J']['Moment-y']
+                    M_J.append(Myj)
+                    Mzj = dictLoad[iNameF][iCDS][i]['J']['Moment-z']
+                    #coordinate X point I and J
+                    Xi = dictModel['Point'][pI]['X']
+                    Xj = dictModel['Point'][pJ]['X']
+
+                dictMultiLoad[j][iCDS]['Axial']['I'].append(N_I)
+                dictMultiLoad[j][iCDS]['Shear-z']['I'].append(V_I)
+                dictMultiLoad[j][iCDS]['Moment-y']['I'].append(M_I)
+                dictMultiLoad[j][iCDS]['Torsion']['I'].append(T_I)
+                dictMultiLoad[j][iCDS]['Axial']['J'].append(N_J)
+                dictMultiLoad[j][iCDS]['Shear-z']['J'].append(V_J)
+                dictMultiLoad[j][iCDS]['Moment-y']['J'].append(M_J)
+                dictMultiLoad[j][iCDS]['Torsion']['J'].append(T_J)
+   
+    for i in dictConci:
+        #Max and Min
+        ####################################### Forza Normale
+        NI = np.array(dictMultiLoad[i]['Axial']['Axial']['I']).T
+        NJ = np.array(dictMultiLoad[i]['Axial']['Axial']['J']).T
+
+        VI = np.array(dictMultiLoad[i]['Axial']['Shear-z']['I']).T
+        MI = np.array(dictMultiLoad[i]['Axial']['Moment-y']['I']).T
+        TI = np.array(dictMultiLoad[i]['Axial']['Torsion']['I']).T
+
+        VJ = np.array(dictMultiLoad[i]['Axial']['Shear-z']['J']).T
+        MJ = np.array(dictMultiLoad[i]['Axial']['Moment-y']['J']).T
+        TJ = np.array(dictMultiLoad[i]['Axial']['Torsion']['J']).T
+
+        #INVILUPPO
+        NmaxInv_I = np.amax(NI, axis=1).tolist()  #'min value of every Row: '
+        NmaxInv_J = np.amax(NJ, axis=1).tolist()
+        NminInv_I = np.amin(NI, axis=1).tolist()
+        NminInv_J = np.amin(NJ, axis=1).tolist()
+
+        MmaxInv_I = np.amax(MI, axis=1).tolist()
+        MmaxInv_J = np.amax(MJ, axis=1).tolist()
+        MminInv_I = np.amin(MI, axis=1).tolist()
+        MminInv_J = np.amin(MJ, axis=1).tolist()
+
+        TmaxInv_I = np.amax(TI, axis=1).tolist()
+        TmaxInv_J = np.amax(TJ, axis=1).tolist()
+        TminInv_I = np.amin(TI, axis=1).tolist()
+        TminInv_J = np.amin(TJ, axis=1).tolist()
+
+        VmaxInv_I = np.amax(VI, axis=1).tolist()
+        VmaxInv_J = np.amax(VJ, axis=1).tolist()
+        VminInv_I = np.amin(VI, axis=1).tolist()
+        VminInv_J = np.amin(VJ, axis=1).tolist()
+
+        deltaI = delta(NmaxInv_I, NminInv_I)
+        deltaJ = delta(NmaxInv_J, NminInv_J)
+
+        deltaMax = max(max(deltaI), max(deltaJ))
+        try:
+            index = deltaI.index(deltaMax)
+            V = VmaxInv_I[index]
+            N = NmaxInv_I[index]
+            Mf = MmaxInv_I[index]
+            Mt = TmaxInv_I[index]
+        except:
+            index = deltaJ.index(deltaMax)
+            V = VmaxInv_J[index]
+            N = NmaxInv_J[index]
+            Mf = MmaxInv_J[index]
+            Mt = TmaxInv_J[index]           
+        
+        N_ele = dictConci[i]['ele'][index]
+        dictConci[i]['Sollecitazioni']['Taglio'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+
+        try:
+            index = deltaI.index(deltaMax)
+            V = VminInv_I[index]
+            N = NminInv_I[index]
+            Mf = MminInv_I[index]
+            Mt = TminInv_I[index]
+        except:
+            index = deltaJ.index(deltaMax)
+            V = VminInv_J[index]
+            N = NminInv_J[index]
+            Mf = MminInv_J[index]
+            Mt = TminInv_J[index]           
+        
+        N_ele = dictConci[i]['ele'][index]
+        dictConci[i]['Sollecitazioni']['Forza Normale'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+        
+        
+        ####################################### Taglio
+        VI = np.array(dictMultiLoad[i]['Shear-z']['Shear-z']['I']).T
+        VJ = np.array(dictMultiLoad[i]['Shear-z']['Shear-z']['J']).T
+
+        NI = np.array(dictMultiLoad[i]['Shear-z']['Axial']['I']).T
+        MI = np.array(dictMultiLoad[i]['Shear-z']['Moment-y']['I']).T
+        TI = np.array(dictMultiLoad[i]['Shear-z']['Torsion']['I']).T
+
+        NJ = np.array(dictMultiLoad[i]['Shear-z']['Axial']['J']).T
+        MJ = np.array(dictMultiLoad[i]['Shear-z']['Moment-y']['J']).T
+        TJ = np.array(dictMultiLoad[i]['Shear-z']['Torsion']['J']).T
+
+        #INVILUPPO 
+        VmaxInv_I = np.amax(VI, axis=1).tolist()
+        VmaxInv_J = np.amax(VJ, axis=1).tolist()
+        VminInv_I = np.amin(VI, axis=1).tolist()
+        VminInv_J = np.amin(VJ, axis=1).tolist()
+
+        MmaxInv_I = np.amax(MI, axis=1).tolist()
+        MmaxInv_J = np.amax(MJ, axis=1).tolist()
+        MminInv_I = np.amin(MI, axis=1).tolist()
+        MminInv_J = np.amin(MJ, axis=1).tolist()
+
+        TmaxInv_I = np.amax(TI, axis=1).tolist()
+        TmaxInv_J = np.amax(TJ, axis=1).tolist()
+        TminInv_I = np.amin(TI, axis=1).tolist()
+        TminInv_J = np.amin(TJ, axis=1).tolist()
+
+        NmaxInv_I = np.amax(NI, axis=1).tolist()
+        NmaxInv_J = np.amax(NJ, axis=1).tolist()
+        NminInv_I = np.amin(NI, axis=1).tolist()
+        NminInv_J = np.amin(NJ, axis=1).tolist()
+
+        deltaI = delta(VmaxInv_I, VminInv_I)
+        deltaJ = delta(VmaxInv_J, VminInv_J)
+
+        deltaMax = max(max(deltaI), max(deltaJ))
+        try:
+            index = deltaI.index(deltaMax)
+            V = VmaxInv_I[index]
+            N = NmaxInv_I[index]
+            Mf = MmaxInv_I[index]
+            Mt = TmaxInv_I[index]
+        except:
+            index = deltaJ.index(deltaMax)
+            V = VmaxInv_J[index]
+            N = NmaxInv_J[index]
+            Mf = MmaxInv_J[index]
+            Mt = TmaxInv_J[index]           
+        
+        N_ele = dictConci[i]['ele'][index]
+        dictConci[i]['Sollecitazioni']['Taglio'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+
+        try:
+            index = deltaI.index(deltaMax)
+            V = VminInv_I[index]
+            N = NminInv_I[index]
+            Mf = MminInv_I[index]
+            Mt = TminInv_I[index]
+        except:
+            index = deltaJ.index(deltaMax)
+            V = VminInv_J[index]
+            N = NminInv_J[index]
+            Mf = MminInv_J[index]
+            Mt = TminInv_J[index]           
+        
+        N_ele = dictConci[i]['ele'][index]
+        dictConci[i]['Sollecitazioni']['Taglio'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+
+        ####################################### Momento flettente
+        MI = np.array(dictMultiLoad[i]['Moment-y']['Moment-y']['I']).T
+        MJ = np.array(dictMultiLoad[i]['Moment-y']['Moment-y']['J']).T
+
+        NI = np.array(dictMultiLoad[i]['Moment-y']['Axial']['I']).T
+        VI = np.array(dictMultiLoad[i]['Moment-y']['Shear-z']['I']).T
+        TI = np.array(dictMultiLoad[i]['Moment-y']['Torsion']['I']).T
+
+        NJ = np.array(dictMultiLoad[i]['Moment-y']['Axial']['J']).T
+        VJ = np.array(dictMultiLoad[i]['Moment-y']['Shear-z']['J']).T
+        TJ = np.array(dictMultiLoad[i]['Moment-y']['Torsion']['J']).T
+
+        #INVILUPPO 
+        VmaxInv_I = np.amax(VI, axis=1).tolist()
+        VmaxInv_J = np.amax(VJ, axis=1).tolist()
+        VminInv_I = np.amin(VI, axis=1).tolist()
+        VminInv_J = np.amin(VJ, axis=1).tolist()
+
+        MmaxInv_I = np.amax(MI, axis=1).tolist()
+        MmaxInv_J = np.amax(MJ, axis=1).tolist()
+        MminInv_I = np.amin(MI, axis=1).tolist()
+        MminInv_J = np.amin(MJ, axis=1).tolist()
+
+        TmaxInv_I = np.amax(TI, axis=1).tolist()
+        TmaxInv_J = np.amax(TJ, axis=1).tolist()
+        TminInv_I = np.amin(TI, axis=1).tolist()
+        TminInv_J = np.amin(TJ, axis=1).tolist()
+
+        NmaxInv_I = np.amax(NI, axis=1).tolist()
+        NmaxInv_J = np.amax(NJ, axis=1).tolist()
+        NminInv_I = np.amin(NI, axis=1).tolist()
+        NminInv_J = np.amin(NJ, axis=1).tolist()
+
+        deltaI = delta(MmaxInv_I, MminInv_I)
+        deltaJ = delta(MmaxInv_J, MminInv_J)
+
+        deltaMax = max(max(deltaI), max(deltaJ))
+        try:
+            index = deltaI.index(deltaMax)
+            V = VmaxInv_I[index]
+            N = NmaxInv_I[index]
+            Mf = MmaxInv_I[index]
+            Mt = TmaxInv_I[index]
+        except:
+            index = deltaJ.index(deltaMax)
+            V = VmaxInv_J[index]
+            N = NmaxInv_J[index]
+            Mf = MmaxInv_J[index]
+            Mt = TmaxInv_J[index]           
+        
+        N_ele = dictConci[i]['ele'][index]
+        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+
+        try:
+            index = deltaI.index(deltaMax)
+            V = VminInv_I[index]
+            N = NminInv_I[index]
+            Mf = MminInv_I[index]
+            Mt = TminInv_I[index]
+        except:
+            index = deltaJ.index(deltaMax)
+            V = VminInv_J[index]
+            N = NminInv_J[index]
+            Mf = MminInv_J[index]
+            Mt = TminInv_J[index]           
+        
+        N_ele = dictConci[i]['ele'][index]
+        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+
+        ####################################### Torsione
+        TI = np.array(dictMultiLoad[i]['Torsion']['Torsion']['I']).T
+        TJ = np.array(dictMultiLoad[i]['Torsion']['Torsion']['J']).T
+
+        NI = np.array(dictMultiLoad[i]['Torsion']['Axial']['I']).T
+        VI = np.array(dictMultiLoad[i]['Torsion']['Shear-z']['I']).T
+        MI = np.array(dictMultiLoad[i]['Torsion']['Moment-y']['I']).T
+
+        NJ = np.array(dictMultiLoad[i]['Torsion']['Axial']['J']).T
+        VJ = np.array(dictMultiLoad[i]['Torsion']['Shear-z']['J']).T
+        MJ = np.array(dictMultiLoad[i]['Torsion']['Moment-y']['J']).T
+
+        #INVILUPPO 
+        VmaxInv_I = np.amax(VI, axis=1).tolist()
+        VmaxInv_J = np.amax(VJ, axis=1).tolist()
+        VminInv_I = np.amin(VI, axis=1).tolist()
+        VminInv_J = np.amin(VJ, axis=1).tolist()
+
+        MmaxInv_I = np.amax(MI, axis=1).tolist()
+        MmaxInv_J = np.amax(MJ, axis=1).tolist()
+        MminInv_I = np.amin(MI, axis=1).tolist()
+        MminInv_J = np.amin(MJ, axis=1).tolist()
+
+        TmaxInv_I = np.amax(TI, axis=1).tolist()
+        TmaxInv_J = np.amax(TJ, axis=1).tolist()
+        TminInv_I = np.amin(TI, axis=1).tolist()
+        TminInv_J = np.amin(TJ, axis=1).tolist()
+
+        NmaxInv_I = np.amax(NI, axis=1).tolist()
+        NmaxInv_J = np.amax(NJ, axis=1).tolist()
+        NminInv_I = np.amin(NI, axis=1).tolist()
+        NminInv_J = np.amin(NJ, axis=1).tolist()
+
+        deltaI = delta(TmaxInv_I, TminInv_I)
+        deltaJ = delta(TmaxInv_J, TminInv_J)
+
+        deltaMax = max(max(deltaI), max(deltaJ))
+        try:
+            index = deltaI.index(deltaMax)
+            V = VmaxInv_I[index]
+            N = NmaxInv_I[index]
+            Mf = MmaxInv_I[index]
+            Mt = TmaxInv_I[index]
+        except:
+            index = deltaJ.index(deltaMax)
+            V = VmaxInv_J[index]
+            N = NmaxInv_J[index]
+            Mf = MmaxInv_J[index]
+            Mt = TmaxInv_J[index]           
+        
+        N_ele = dictConci[i]['ele'][index]
+        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+
+        try:
+            index = deltaI.index(deltaMax)
+            V = VminInv_I[index]
+            N = NminInv_I[index]
+            Mf = MminInv_I[index]
+            Mt = TminInv_I[index]
+        except:
+            index = deltaJ.index(deltaMax)
+            V = VminInv_J[index]
+            N = NminInv_J[index]
+            Mf = MminInv_J[index]
+            Mt = TminInv_J[index]           
+        
+        N_ele = dictConci[i]['ele'][index]
+        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+    
+    return dictConci
+
+def writeOut_xlsx(dictConci, NameFile):
+    # Cretae a xlsx file
+    xlsx_File = xlsxwriter.Workbook(NameFile)
+
+    # Add new worksheet
+    sheet_days = xlsx_File.add_worksheet()
+
+    row1 = 3
+    column = 1
+
+    cell_format1 = xlsx_File.add_format({'bold': True, 'font_color': '#000000', 'bg_color': '#00FF00'})
+    cell_format2 = xlsx_File.add_format({'bold': True, 'font_color': '#000000', 'bg_color': '#CCFFCC'})
+    cell_format3 = xlsx_File.add_format({'bold': False, 'font_color': '#000000', 'bg_color': '#FFFF99'})
+
+    for i in dictConci:
+        sheet_days.write(row1, 0, 'Sezione numero:', cell_format1) #write numero sezione
+        sheet_days.write(row1, 1, i, cell_format1) #write numero sezione
+        for c in range(2, 6):
+            sheet_days.write(row1, c, " ", cell_format1) #write numero sezione
+        row1 += 1
+        sheet_days.write(row1, 0, 'File') #write 
+        sheet_days.write(row1, 1, 'N_el') #write 
+        sheet_days.write(row1, 2, 'N') #write 
+        sheet_days.write(row1, 3, 'T') #write 
+        sheet_days.write(row1, 4, 'Mf') #write 
+        sheet_days.write(row1, 5, 'Mt') #write 
+        row1 += 1
+
+        for iName in list(dictConci[i]['Sollecitazioni'].keys()):
+            sheet_days.write(row1, 0, iName, cell_format2)
+            for c in range(1, 6):
+                sheet_days.write(row1, c, " ", cell_format2) #write numero sezione
+            row1 += 1
+
+            for iCDS in dictConci[i]['Sollecitazioni'][iName]:
+                sheet_days.write(row1, 0, iCDS, cell_format3)
+
+                for c in range(1, 6):
+                    sheet_days.write(row1, c, " ", cell_format3) #write numero sezione
+
+                row1 += 1
+                try:
+                    sheet_days.write(row1, 0, " ", cell_format3) #write 
+                    sheet_days.write(row1, 1, dictConci[i]['Sollecitazioni'][iName][iCDS]['N_el'], cell_format3) #write N_ele
+                    sheet_days.write(row1, 2, dictConci[i]['Sollecitazioni'][iName][iCDS]['N'], cell_format3) #write N
+                    sheet_days.write(row1, 3, dictConci[i]['Sollecitazioni'][iName][iCDS]['T'], cell_format3) #write T
+                    sheet_days.write(row1, 4, dictConci[i]['Sollecitazioni'][iName][iCDS]['Mf'], cell_format3) #write Mf
+                    sheet_days.write(row1, 5, dictConci[i]['Sollecitazioni'][iName][iCDS]['Mt'], cell_format3) #write Mt
+                except:
+                    print('non sono stati assegnati le CDS in', iName, 'combinazione', iCDS, 'concio', i)
+                row1 += 1
+        
+        row1 += 2
+
+    # Close the Excel file
+    xlsx_File.close()
+    
+    return 
+
+
+def Run_ExportOut_SuperFoglio(pathInput, pathOut):
+    #path: della cartella che contiene i file excel
+
+    directory = os.path.join(pathInput)
+    for root,dirs,files in os.walk(directory):
+        fileList = files
+    
+    #Modello
+    if ("00_Info_Modello.xlsx" in fileList):
+        print("File 00_Info_Modello.xlsx Exists")
+        dictModel = importModel_MIDAS(os.path.join(pathInput, "00_Info_Modello.xlsx"))
+        dictConci = EleConcio(dictModel)
+    else:
+        print("File 00_Info_Modello.xlsx No Exists")
+    #PlotConci(dictModel, dictConci)
+    #print(dictModel['Point'])
+    #print(dictModel['Element'])
+
+    #### G1-Permanenti
+    if ("01_Permanenti.xlsx" in fileList):
+        print("File 01_Permanenti.xlsx Exists")
+        dictLoad_g1 = importOneLoad_MIDAS(os.path.join(pathInput, "01_Permanenti.xlsx"))
+        dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_g1, 'G1')
+    else:
+        print("File 01_Permanenti.xlsx No Exists")
+
+    #print(dictConci[1]['Sollecitazioni'])
+    #Plot_CDS(dictModel, dictLoad_g1)
+    #Plot_CDS_concio(dictModel, dictLoad_g1, dictConci)
+
+    #### G2-Permanenti
+    if ("02_Portati.xlsx" in fileList):
+        print("File 02_Portati.xlsx Exists")
+        dictLoad_g2 = importOneLoad_MIDAS(os.path.join(pathInput, "02_Portati.xlsx"))
+        dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_g2, 'G2')
+    else:
+        print("File 02_Portati.xlsx No Exists")
+
+    #### R-Ritiro
+    if ("04_Ritiro.xlsx" in fileList):
+        print("File 04_Ritiro.xlsx Exists")
+        dictLoad_R = importOneLoad_MIDAS(os.path.join(pathInput, "04_Ritiro.xlsx"))
+        dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_R, 'R')
+    else:
+        print("File 04_Ritiro.xlsx No Exists")
+
+
+    #### MQ - Mobili Tandem 
+    if ("03_Mobili_TS.xlsx" in fileList):
+        print("File 03_Mobili_TS Exists")
+        dictLoad_ts = importMultiLoad_MIDAS(os.path.join(pathInput, "03_Mobili_TS.xlsx"))
+        dictConci = AssignCDSMulti_concio(dictModel, dictConci, dictLoad_ts, 'MQ')
+    else:
+        print("File 03_Mobili_TS.xlsx No Exists")
+
+
+    #### MQ - Mobili distribuiti
+    if ("03_Mobili_TS.xlsx" in fileList):
+        print("File 03_Mobili_UDL.xlsx Exists")
+        dictLoad_udl = importMultiLoad_MIDAS(os.path.join(pathInput, "03_Mobili_UDL.xlsx"))
+        dictConci = AssignCDSMulti_concio(dictModel, dictConci, dictLoad_udl, 'Md')
+    else:
+        print("File 03_Mobili_UDL.xlsx No Exists")
+
+    #### T - Temperatura
+    if ("05_Temperatura.xlsx" in fileList):
+        print("File 05_Temperatura.xlsx Exists")
+        dictLoad_temp = importMultiLoad2_MIDAS(os.path.join(pathInput, "05_Temperatura.xlsx"))
+        dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_temp, 'T')
+    else:
+        print("File 05_Temperatura.xlsx No Exists")
+
+    #### Mf - Fatica
+    if ("06_Fatica.xlsx" in fileList):
+        print("File 06_Fatica.xlsx Exists")
+        #dictLoad_fatica = importMultiLoad_MIDAS(os.path.join(pathInput, "06_Fatica.xlsx"))
+        #dictConci = AssignCDSFatica_concio(dictModel, dictConci, dictLoad_fatica, 'Mf')
+    else:
+        print("File 06_fatica.xlsx No Exists")
+    #devo lavorare sul massimo delta e non sul massimo della sollecitazione
+
+    #### C - Cedimenti
+    if ("07_Cedimenti.xlsx" in fileList):
+        print("File 07_Cedimenti.xlsx Exists")
+        dictLoad_c = importMultiLoad2_MIDAS(os.path.join(pathInput, "07_Cedimenti.xlsx"))
+        dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_c, 'Mf')
+    else:
+        print("File 07_Cedimenti.xlsx No Exists")
+
+    writeOut_xlsx(dictConci, os.path.join(pathOut, "Output_varieCose_2023.xlsx")) 
+
+    return 
+
+
+
+
