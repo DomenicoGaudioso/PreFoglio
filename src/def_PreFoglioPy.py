@@ -11,45 +11,66 @@ def delta(listMax, listMin):
         delta.append(delta_I)
     return delta
 
-def importModel_MIDAS(path = None):
+def importMidasData(path = None):
     #path: percorso dove trovare il file excel di input
     if path == None:
         path = "\Out_Midas\00_Info_Modello.xlsx"
-    ## IMPORT DEL FILE EXCEL 
-    # Element
-    dfElement = pd.read_excel(path,
-                        sheet_name = ['Element'],
-                        index_col = 0,
-                        dtype = {"Element": float, "Material":float, "Property":float, "Node1":float, "Node2":float})
 
+    # Leggere tutti i fogli in un dizionario
+    # Le chiavi del dizionario sono i nomi dei fogli
+    # Leggi solo i fogli specifici
+    specific_sheets = ['Point', 'Element', 'CDS', 'Mobili']
+    xls = pd.read_excel(path, sheet_name=specific_sheets)
 
-    dictElement = dfElement['Element'].T.to_dict()
+    # Ora puoi accedere a ogni foglio come un DataFrame dal dizionario
+    #for sheet_name, df in xls.items():
+        #print(f"Sheet name: {sheet_name}")
+        #print(df)
 
-    # Point
-    dfPoint = pd.read_excel(path,
-                        sheet_name = ['Point'],
-                        index_col = 0,
-                        dtype = {"Node": int, "X":float, "Y":float, "Z":float})
-                    
-    dictPoint = dfPoint['Point'].T.to_dict()
+    # xls è ora un dizionario con i fogli 'point' ed 'element'
+    # Accedere ai dati del foglio 'point'
+    point_df = xls['Point']
+    point_df = point_df.astype({"Node": int, "X": float, "Y": float, "Z": float})
+    point_df.set_index('Node', inplace=True)
+    #print("Dati del foglio 'point':")
+    #print(point_df)
 
-    ModelDict = {'Element': dictElement,
-    'Point': dictPoint,
-    }
+    # Accedere ai dati del foglio 'element'
+    element_df = xls['Element']
+    element_df = element_df.astype({"Element": float, "Material":float, "Property":float, "Node1":float, "Node2":float})
+    element_df.set_index('Element', inplace=True)
 
-    return ModelDict
+    #print("\nDati del foglio 'element':")
+    #print(element_df)
 
-def importOneLoad_MIDAS(path = None):
+    # Dizionario per memorizzare i DataFrame filtrati
+    filtered_dfs = {}
+    filtered_dfs["Point"] = point_df.T.to_dict()
+    filtered_dfs["Element"] = element_df.T.to_dict()
+
+    # Accedere ai dati del foglio 'CDS'
+    cds_df = xls['CDS']
+
+    # Filtra il DataFrame per ogni valore unico in "Load"
+    filtered_dfs["G1"] = cds_df[cds_df['Load'] == "G1"]
+    filtered_dfs["G2"] = cds_df[cds_df['Load'] == "G2"]
+    # Filtra per includere solo le righe dove "Load" è "'q7.1-Termica-'" o "'q7.1-Termica+'"
+    filtered_dfs["Termica"] = cds_df[cds_df['Load'].isin(['q7.2-Termica-', 'q7.1-Termica+'])]
+
+    # Accedere ai dati del foglio 'Mobili'
+    mobili_df = xls['Mobili']
+
+    # Filtrare basandosi sulla prima lettera
+    filtered_dfs["Tandem"] = mobili_df[mobili_df['Load'].apply(lambda x: x.startswith('T'))]
+    filtered_dfs["Distr"] = mobili_df[mobili_df['Load'].apply(lambda x: x.startswith('D'))]
+    filtered_dfs["Fatica"] = mobili_df[mobili_df['Load'].apply(lambda x: x.startswith('F'))]
+
+    return filtered_dfs
+
+def importOneLoad_MIDAS(df_Data):
     #path: percorso dove trovare il file excel di input
-    if path == None:
-        path = "\Out_Midas\Info_Modello.xlsx"
-    ## IMPORT DEL FILE EXCEL 
-    # Element
-    dfLoad = pd.read_excel(path,
-                        sheet_name = ['Foglio1'],
-                        dtype = {"Elem": float, "Load":str, "Axial":float, "Shear-y":float, "Shear-z":float, "Torsion":float, "Moment-y":float, "Moment-z":float })
 
-    dictLoad = dfLoad['Foglio1'].T.to_dict()
+    dictLoad = df_Data.T.to_dict()
 
     dictLoad_order = {}
     for i in dictLoad:
@@ -82,21 +103,16 @@ def importOneLoad_MIDAS(path = None):
 
     return dictLoad_order 
 
-def importMultiLoad_MIDAS(path = None):
+def importMultiLoad_MIDAS(df_Data):
     #path: percorso dove trovare il file excel di input
-    if path == None:
-        path = "\Out_Midas\Info_Modello.xlsx"
-    ## IMPORT DEL FILE EXCEL 
-    # Element
-    xl = pd.ExcelFile(path) # nome singoli sheet names (fogli in un file excel)
+
+    unique_loads = df_Data['Load'].unique()
 
     dictMultiLoad = {}
-    for iFoglio in xl.sheet_names:
-        dfLoad = pd.read_excel(path,
-                            sheet_name = [iFoglio],
-                            dtype = {"Elem": float, "Load":str, "Part":str,	"Component":str, "Axial":float, "Shear-y":float, "Shear-z":float, "Torsion":float, "Moment-y":float, "Moment-z":float })
-
-        dictLoad = dfLoad[iFoglio].T.to_dict()
+    #for iFoglio in xl.sheet_names:  PRIMA
+    for load in unique_loads:
+        # Creazione di un nuovo DataFrame per ogni valore unico
+        dictLoad = df_Data[df_Data['Load'] == load].T.to_dict()
 
         dictLoad_order = {'Axial': {}, 'Shear-z': {}, 'Moment-y': {}, 'Torsion': {}}
         for i in dictLoad:
@@ -129,25 +145,21 @@ def importMultiLoad_MIDAS(path = None):
                         pJ = dictLoad_order[refCDS][element]['J'][ikeys].replace('J[', "").replace(']', "")
                         dictLoad_order[refCDS][element]['J'][ikeys] = int(pJ)
 
-        dictMultiLoad[iFoglio] = dictLoad_order
+        dictMultiLoad[load] = dictLoad_order
 
     return dictMultiLoad
 
-def importMultiLoad2_MIDAS(path = None):
+def importMultiLoad2_MIDAS(df_Data):
     #path: percorso dove trovare il file excel di input
-    if path == None:
-        path = "\Out_Midas\Info_Modello.xlsx"
-    ## IMPORT DEL FILE EXCEL 
+    unique_loads = df_Data['Load'].unique()
+
     # Element
-    xl = pd.ExcelFile(path) # nome singoli sheet names (fogli in un file excel)
+    unique_loads = df_Data['Load'].unique()
 
     dictMultiLoad = {}
-    for iFoglio in xl.sheet_names:
-        dfLoad = pd.read_excel(path,
-                            sheet_name = [iFoglio],
-                            dtype = {"Elem": float, "Load":str, "Part":str, "Axial":float, "Shear-y":float, "Shear-z":float, "Torsion":float, "Moment-y":float, "Moment-z":float })
-
-        dictLoad = dfLoad[iFoglio].T.to_dict()
+    for load in unique_loads:
+        # Creazione di un nuovo DataFrame per ogni valore unico
+        dictLoad = df_Data[df_Data['Load'] == load].T.to_dict()
 
         dictLoad_order = {}
         for i in dictLoad:
@@ -178,7 +190,7 @@ def importMultiLoad2_MIDAS(path = None):
                         pJ = dictLoad_order[element]['J'][ikeys].replace('J[', "").replace(']', "")
                         dictLoad_order[element]['J'][ikeys] = int(pJ)
 
-        dictMultiLoad[iFoglio] = dictLoad_order
+        dictMultiLoad[load] = dictLoad_order
 
     return dictMultiLoad
 
@@ -1648,75 +1660,53 @@ def remove_nested_keys(dictionary, keys_to_remove):
 
 def Run_Export1Out_SuperFoglio(pathInput, pathOut):
     #path: della cartella che contiene i file excel
-
-    directory = os.path.join(pathInput)
-    for root,dirs,files in os.walk(directory):
-        fileList = files
     
-    #Modello
-    if ("00_Info_Modello.xlsx" in fileList):
-        print("File 00_Info_Modello.xlsx Exists")
-        dictModel = importModel_MIDAS(os.path.join(pathInput, "00_Info_Modello.xlsx"))
-        dictConci = EleConcio(dictModel)
-    else:
-        print("File 00_Info_Modello.xlsx No Exists")
-    #PlotConci(dictModel, dictConci)
-    #print(dictModel['Point'])
-    #print(dictModel['Element'])
+    #IMPORTAZIONE 
+    dictModel = importMidasData(pathInput)
+    dictConci = EleConcio(dictModel)
 
     #### G1-Permanenti
-    if ("01_Permanenti.xlsx" in fileList):
-        print("File 01_Permanenti.xlsx Exists")
-        dictLoad_g1 = importOneLoad_MIDAS(os.path.join(pathInput, "01_Permanenti.xlsx"))
+    try:
+        dictLoad_g1 = importOneLoad_MIDAS(dictModel["G1"])
         dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_g1, 'G1')
-    else:
-        print("File 01_Permanenti.xlsx No Exists")
-
-    #print(dictConci[1]['Sollecitazioni'])
-    #Plot_CDS(dictModel, dictLoad_g1)
-    #Plot_CDS_concio(dictModel, dictLoad_g1, dictConci)
+    except:
+        print("G1 No Exists")
 
     #### G2-Permanenti
-    if ("02_Portati.xlsx" in fileList):
-        print("File 02_Portati.xlsx Exists")
-        dictLoad_g2 = importOneLoad_MIDAS(os.path.join(pathInput, "02_Portati.xlsx"))
+    try:
+        dictLoad_g2 = importOneLoad_MIDAS(dictModel["G2"])
         dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_g2, 'G2')
-    else:
-        print("File 02_Portati.xlsx No Exists")
+    except:
+        print("G2 No Exists")
 
     #### R-Ritiro
-    if ("04_Ritiro.xlsx" in fileList):
-        print("File 04_Ritiro.xlsx Exists")
-        dictLoad_R = importOneLoad_MIDAS(os.path.join(pathInput, "04_Ritiro.xlsx"))
+    try:
+        dictLoad_R = importOneLoad_MIDAS(dictModel["R"])
         dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_R, 'R')
-    else:
-        print("File 04_Ritiro.xlsx No Exists")
-
+    except:
+        print("Ritiro No Exists")
 
     #### MQ - Mobili Tandem 
-    if ("03_Mobili_TS.xlsx" in fileList):
-        print("File 03_Mobili_TS Exists")
-        dictLoad_ts = importMultiLoad_MIDAS(os.path.join(pathInput, "03_Mobili_TS.xlsx"))
-        dictConci = AssignCDSMulti_concio(dictModel, dictConci, dictLoad_ts, 'MQ')
-    else:
-        print("File 03_Mobili_TS.xlsx No Exists")
+    #try:
+    dictLoad_ts = importMultiLoad_MIDAS(dictModel["Tandem"])
+    dictConci = AssignCDSMulti_concio(dictModel, dictConci, dictLoad_ts, 'MQ')
+    #except:
+        #print("Tandem No Exists")
 
 
     #### MQ - Mobili distribuiti
-    if ("03_Mobili_TS.xlsx" in fileList):
-        print("File 03_Mobili_UDL.xlsx Exists")
-        dictLoad_udl = importMultiLoad_MIDAS(os.path.join(pathInput, "03_Mobili_UDL.xlsx"))
+    try:
+        dictLoad_udl = importMultiLoad_MIDAS(dictModel["Distr"])
         dictConci = AssignCDSMulti_concio(dictModel, dictConci, dictLoad_udl, 'Md')
-    else:
-        print("File 03_Mobili_UDL.xlsx No Exists")
+    except:
+        print("Distribuiti No Exists")
 
     #### T - Temperatura
-    if ("05_Temperatura.xlsx" in fileList):
-        print("File 05_Temperatura.xlsx Exists")
-        dictLoad_temp = importMultiLoad2_MIDAS(os.path.join(pathInput, "05_Temperatura.xlsx"))
+    try:
+        dictLoad_temp = importMultiLoad2_MIDAS(dictModel["Termica"])
         dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_temp, 'T')
-    else:
-        print("File 05_Temperatura.xlsx No Exists")
+    except:
+        print("Temperatura.xlsx No Exists")
 
     #### Mf - Fatica
     #if ("06_Fatica.xlsx" in fileList):
@@ -1728,11 +1718,10 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
     #devo lavorare sul massimo delta e non sul massimo della sollecitazione
 
     #### C - Cedimenti
-    if ("07_Cedimenti.xlsx" in fileList):
-        print("File 07_Cedimenti.xlsx Exists")
-        dictLoad_c = importMultiLoad2_MIDAS(os.path.join(pathInput, "07_Cedimenti.xlsx"))
+    try:
+        dictLoad_c = importMultiLoad2_MIDAS(dictModel["Cedimenti"])
         dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_c, 'C')
-    else:
+    except:
         print("File 07_Cedimenti.xlsx No Exists")
 
     NewDict = remove_nested_keys(dictConci, ['Mfat+', 'Mfat-'])
@@ -1745,17 +1734,17 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
 def Run_Export2Out_SuperFoglio(pathInput, pathOut, metodo = 2):
     #path: della cartella che contiene i file excel
 
-    directory = os.path.join(pathInput)
-    for root,dirs,files in os.walk(directory):
-        fileList = files
-    
-    #Modello
-    if ("00_Info_Modello.xlsx" in fileList):
-        print("File 00_Info_Modello.xlsx Exists")
-        dictModel = importModel_MIDAS(os.path.join(pathInput, "00_Info_Modello.xlsx"))
-        dictConci = EleConcio(dictModel)
-    else:
-        print("File 00_Info_Modello.xlsx No Exists")
+    #IMPORTAZIONE 
+    dictModel = importMidasData(pathInput)
+    dictConci = EleConcio(dictModel)
+
+    #### G1-Permanenti
+    try:
+        dictLoad_g1 = importOneLoad_MIDAS(dictModel["G1"])
+        dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_g1, 'G1')
+    except:
+        print("G1 No Exists")
+
     #PlotConci(dictModel, dictConci)
     #print(dictModel['Point'])
     #print(dictModel['Element'])
@@ -1766,26 +1755,26 @@ def Run_Export2Out_SuperFoglio(pathInput, pathOut, metodo = 2):
 
     if metodo == 1: #prende le cds in base alla variazione massima di sollecitazione
     #### Mf - Fatica
-        if ("06_Fatica.xlsx" in fileList):
-            print("File 06_Fatica.xlsx Exists")
-            dictLoad_fatica = importMultiLoad_MIDAS(os.path.join(pathInput, "06_Fatica.xlsx"))
+        try:
+            dictLoad_fatica = importMultiLoad_MIDAS(dictModel["Fatica"])
             dictConci = AssignCDSFatica_concio(dictModel, dictConci, dictLoad_fatica, 'Mfat')
-        else:
-            print("File 06_fatica.xlsx No Exists")
+        except:
+            print("fatica No Exists")
         #devo lavorare sul massimo delta e non sul massimo della sollecitazione
 
     elif metodo == 2: #prende CDS massima e minima come per i carihi mobili
     #### MQ - Mobili distribuiti
-        if ("06_Fatica.xlsx" in fileList):
-            print("File 06_Fatica.xlsx Exists")
-            dictLoad_udl = importMultiLoad_MIDAS(os.path.join(pathInput, "06_Fatica.xlsx"))
+        try:
+            dictLoad_udl = importMultiLoad_MIDAS(dictModel["Fatica"])
             dictConci = AssignCDSMulti_concio(dictModel, dictConci, dictLoad_udl, 'Mfat')
-        else:
-            print("File 06_Fatica.xlsx No Exists")
+        except:
+            print("Fatica No Exists")
 
     NewDict = remove_nested_keys(dictConci, ['Mf+', 'Mf-'])
     writeOut_xlsx(NewDict, os.path.join(pathOut, "Output_GaudiCoseFatica_2023.xlsx")) 
 
     return 
 
-
+PathIn = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src\00_UNICO.xlsx"
+PathOut = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src"
+Run_Export1Out_SuperFoglio(PathIn, PathOut)
