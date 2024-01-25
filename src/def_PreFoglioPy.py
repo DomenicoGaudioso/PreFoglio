@@ -54,6 +54,7 @@ def importMidasData(path = None):
     # Filtra il DataFrame per ogni valore unico in "Load"
     filtered_dfs["G1"] = cds_df[cds_df['Load'] == "G1"]
     filtered_dfs["G2"] = cds_df[cds_df['Load'] == "G2"]
+    filtered_dfs["Ritiro"] = cds_df[cds_df['Load'] == "E2-Ritiro"]
     # Filtra per includere solo le righe dove "Load" è "'q7.1-Termica-'" o "'q7.1-Termica+'"
     filtered_dfs["Temperatura"] = cds_df[cds_df['Load'].isin(['Temperatura(max)', 'Temperatura(min)'])]
     filtered_dfs["Cedimenti"] = cds_df[cds_df['Load'].isin(['Cedimenti(max)', 'Cedimenti(min)'])]
