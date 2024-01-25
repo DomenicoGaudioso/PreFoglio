@@ -55,7 +55,8 @@ def importMidasData(path = None):
     filtered_dfs["G1"] = cds_df[cds_df['Load'] == "G1"]
     filtered_dfs["G2"] = cds_df[cds_df['Load'] == "G2"]
     # Filtra per includere solo le righe dove "Load" è "'q7.1-Termica-'" o "'q7.1-Termica+'"
-    filtered_dfs["Termica"] = cds_df[cds_df['Load'].isin(['q7.2-Termica-', 'q7.1-Termica+'])]
+    filtered_dfs["Temperatura"] = cds_df[cds_df['Load'].isin(['Temperatura(max)', 'Temperatura(min)'])]
+    filtered_dfs["Cedimenti"] = cds_df[cds_df['Load'].isin(['Cedimenti(max)', 'Cedimenti(min)'])]
 
     # Accedere ai dati del foglio 'Mobili'
     mobili_df = xls['Mobili']
@@ -1703,7 +1704,7 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
 
     #### T - Temperatura
     try:
-        dictLoad_temp = importMultiLoad2_MIDAS(dictModel["Termica"])
+        dictLoad_temp = importMultiLoad2_MIDAS(dictModel["Temperatura"])
         dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_temp, 'T')
     except:
         print("Temperatura.xlsx No Exists")
