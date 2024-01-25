@@ -1,47 +1,49 @@
 Sub GaudiCose()
     Dim objShell As Object
-    Dim PythonExe As String, PythonScript As String
-    Dim wb As Workbook
+    Dim PythonExe, PythonScript As String
     Dim sWorkbookPath As String
-    Dim startTime As Double
-    Dim timeOut As Double
+    Dim FileName As String
+    Dim KillFile As String
+    Dim i As Integer
+    Dim FileName2 As String
+    Dim targetWorkbook As Workbook
+    Dim targetSheet As Worksheet
 
-    ' Legge il percorso dal foglio excel
-    sWorkbookPath = ActiveSheet.Range("A3").Value
-    
-    ' Controlla se il file esiste e lo cancella se presente
-    If Len(Dir(sWorkbookPath)) > 0 Then
-        Kill sWorkbookPath
+    ' Imposta il workbook e la sheet attuali
+    Set targetWorkbook = ActiveWorkbook
+    Set targetSheet = ActiveSheet
+
+    ' Cancella il vecchio file se presente
+    sWorkbookPath = targetSheet.Range("A3").Value
+    FileName = VBA.FileSystem.Dir(sWorkbookPath)
+    If FileName <> VBA.Constants.vbNullString Then
+        KillFile = sWorkbookPath
+        Kill KillFile
     End If
 
-    ' Crea un nuovo oggetto Shell
-    Set objShell = CreateObject("Wscript.Shell")
+    Set objShell = VBA.CreateObject("Wscript.Shell")
 
-    ' Percorso dell'eseguibile Python e dello script
-    PythonExe = "Z:\tools\Portable Python-3.9.13 x64\App\Python\python.exe"
+    ' Lancio Python
+    PythonExe = """Z:\tools\Portable Python-3.9.13 x64\App\Python\python.exe"""
     PythonScript = "Z:\tools\GaudiCose\src\Run_PreFoglioPy.py"
-
-    ' Esegue lo script Python e attende il suo completamento
-    objShell.Run """" & PythonExe & """ """ & PythonScript & """", 1, True
-
-    ' Disattiva gli avvisi
-    Application.DisplayAlerts = False
+    objShell.Run PythonExe & " " & PythonScript, 1, True
 
     ' Aspetta che il file Excel generato sia presente nella cartella
-    startTime = Timer
-    timeOut = 100 ' Tempo massimo di attesa in secondi
-    Do While Len(Dir(sWorkbookPath)) = 0 And Timer - startTime < timeOut
-        DoEvents ' Mantiene attiva l'interfaccia utente
+    For i = 1 To 500
         Application.Wait Now + TimeValue("00:00:01")
-    Loop
+        FileName2 = VBA.FileSystem.Dir(sWorkbookPath)
+        
+        If FileName2 <> VBA.Constants.vbNullString Then
+            Set wb = Workbooks.Open(sWorkbookPath)
+            wb.Worksheets(1).Range("A4:F18000").Copy
+            targetSheet.Range("A4").PasteSpecial Paste:=xlPasteValues
+            wb.Close False
+            Exit For
+        End If
+    Next i
 
-    If Len(Dir(sWorkbookPath)) > 0 Then
-        Set wb = Workbooks.Open(sWorkbookPath)
-        wb.Worksheets(1).Range("A4:F18000").Copy
-        ThisWorkbook.Worksheets("SFoglio_nuovo").Range("A4").PasteSpecial xlPasteValues
-        wb.Close False
-    End If
-
-    ' Riattiva gli avvisi
-    Application.DisplayAlerts = True
 End Sub
+
+
+
+
