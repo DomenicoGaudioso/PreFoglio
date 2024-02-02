@@ -1683,7 +1683,7 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
 
     #### R-Ritiro
     try:
-        dictLoad_R = importOneLoad_MIDAS(dictModel["R"])
+        dictLoad_R = importOneLoad_MIDAS(dictModel["Ritiro"])
         dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_R, 'R')
     except:
         print("Ritiro No Exists")
@@ -1777,6 +1777,6 @@ def Run_Export2Out_SuperFoglio(pathInput, pathOut, metodo = 2):
 
     return 
 
-# PathIn = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src\00_UNICO.xlsx"
-# PathOut = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src"
-# Run_Export1Out_SuperFoglio(PathIn, PathOut)
+#PathIn = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src\00_UNICO.xlsx"
+#PathOut = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src"
+#Run_Export1Out_SuperFoglio(PathIn, PathOut)
