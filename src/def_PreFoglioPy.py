@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import xlsxwriter
+#from scipy.cluster.hierarchy import linkage, fcluster
+from collections import defaultdict
 
 def delta(listMax, listMin):
     delta = []
@@ -284,19 +286,46 @@ def EleConcio(dictModel):
 
     return dictConci
 
-def PlotConci(dictModel, dictConci):
-    
-    for i in dictConci:
-        pI = dictConci[i]['pointStart']
-        pJ = dictConci[i]['pointEnd']
 
-        Xi = dictModel['Point'][pI]['X']
-        Yi = dictModel['Point'][pI]['Y']
-        Xj = dictModel['Point'][pJ]['X']
-        Yj = dictModel['Point'][pJ]['Y']
-        plt.plot( np.array([ Xi, Xj]), np.array([ Yi, Yj]), '-o')
+def PlotConci(dictModel, dictConci):
+    # Definizione del colormap
+    colormap = plt.cm.get_cmap("Paired")
+    num_keys = len(dictConci)
+
+    # Creazione della mappa dei colori
+    if num_keys > 1:
+        color_map = {key: colormap(i / (num_keys - 1)) for i, key in enumerate(dictConci)}
+    else:
+        color_map = {key: colormap(0) for key in dictConci}
+    
+    # Iterazione su ogni concio
+    for key, group in dictConci.items():
+        line_color = color_map.get(key, 'black')  # Ottieni il colore per il concio corrente
+        points = []  # Lista per memorizzare i punti di tutti gli elementi del concio
+        
+        # Iterazione sugli elementi del concio per raccogliere le coordinate dei nodi
+        for element_id in group['ele']:
+            node1, node2 = dictModel['Element'][element_id]['Node1'], dictModel['Element'][element_id]['Node2']
+            points.append([dictModel['Point'][node1]['X'], dictModel['Point'][node1]['Y']])
+            points.append([dictModel['Point'][node2]['X'], dictModel['Point'][node2]['Y']])
+        
+        # Conversione della lista dei punti in un array numpy per facilitare il calcolo
+        points_array = np.array(points)
+        
+        # Calcolo del baricentro del concio corrente
+        centroid_x = np.mean(points_array[:, 0])
+        centroid_y = np.mean(points_array[:, 1])
+        
+        # Visualizzazione del nome della chiave al baricentro del concio
+        #plt.text(centroid_x, centroid_y, key, color='black', fontsize=9, ha='center')
+        
+        # Disegno delle linee per gli elementi del concio
+        for i in range(0, len(points), 2):
+            plt.plot([points[i][0], points[i+1][0]], [points[i][1], points[i+1][1]], color=line_color)
+    
+    plt.axis('equal')
     plt.show()
-    return 
+
 
 def Plot_CDS(dictModel, dictLoad):
     
@@ -723,7 +752,7 @@ def AssignCDSMulti_concio(dictModel, dictConci, dictLoad, NameCDS):
                 Mt_min = TJ[indexList][indexComb_min]
 
         except:
-            print('il taglio massimo non sta sulle stesse sezioni dell elemento')
+            #print('il taglio massimo non sta sulle stesse sezioni dell elemento')
             try:
                 res = np.where(Vref_VI == Vmax)
                 indexList = res[0][0] # per trovare l'elmento corrispondente
@@ -1253,7 +1282,7 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
         'Torsion': { 'Axial': {'I': [], 'J': []}, 'Shear-z': {'I': [], 'J': []}, 'Moment-y': {'I': [], 'J': []},  'Torsion': {'I': [], 'J': []}}, 
         }
 
-    for iCDS in refCDS: #dobbiamo aggiungere ancora la forza normale 
+    for iCDS in refCDS:
         for iNameF in nameFogli:
             for j in dictConci:
                 N_I, V_I, M_I, T_I = [], [], [], []
@@ -1266,8 +1295,8 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
                     #cds I
                     Ni = dictLoad[iNameF][iCDS][i]['I']['Axial']
                     N_I.append(Ni)
-                    Vyi = abs(dictLoad[iNameF][iCDS][i]['I']['Shear-y'])
-                    Vzi = abs(dictLoad[iNameF][iCDS][i]['I']['Shear-z'])
+                    Vyi = dictLoad[iNameF][iCDS][i]['I']['Shear-y']
+                    Vzi = dictLoad[iNameF][iCDS][i]['I']['Shear-z']
                     V_I.append(Vzi)
                     #print('vzi', Ni)
                     Ti = dictLoad[iNameF][iCDS][i]['I']['Torsion']
@@ -1278,8 +1307,8 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
                     #cds J
                     Nj = dictLoad[iNameF][iCDS][i]['J']['Axial']
                     N_J.append(Nj)
-                    Vyj = abs(dictLoad[iNameF][iCDS][i]['J']['Shear-y'])
-                    Vzj = abs(dictLoad[iNameF][iCDS][i]['J']['Shear-z'])
+                    Vyj = dictLoad[iNameF][iCDS][i]['J']['Shear-y']
+                    Vzj = dictLoad[iNameF][iCDS][i]['J']['Shear-z']
                     V_J.append(Vzj)
                     Tj = dictLoad[iNameF][iCDS][i]['J']['Torsion']
                     T_J.append(Tj)
@@ -1340,7 +1369,6 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
         deltaMax = max(max(deltaI), max(deltaJ))
         try:
             res = np.where(deltaI == deltaMax)
-            print(res)
             index = deltaI.index(deltaMax)
             V = VmaxInv_I[index]
             N = NmaxInv_I[index]
@@ -1354,7 +1382,7 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
             Mt = TmaxInv_J[index]           
         
         N_ele = dictConci[i]['ele'][index]
-        dictConci[i]['Sollecitazioni']['Taglio'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+        dictConci[i]['Sollecitazioni']['Forza Normale'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
 
         try:
             index = deltaI.index(deltaMax)
@@ -1410,7 +1438,6 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
         deltaJ = delta(VmaxInv_J, VminInv_J)
 
         deltaMax = max(max(deltaI), max(deltaJ))
-        print(deltaI)
         try:
             
             #res = np.where(deltaI == deltaMax)
@@ -1469,6 +1496,8 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
         MminInv_I = np.amin(MI, axis=1).tolist()
         MminInv_J = np.amin(MJ, axis=1).tolist()
 
+        
+
         TmaxInv_I = np.amax(TI, axis=1).tolist()
         TmaxInv_J = np.amax(TJ, axis=1).tolist()
         TminInv_I = np.amin(TI, axis=1).tolist()
@@ -1481,6 +1510,7 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
 
         deltaI = delta(MmaxInv_I, MminInv_I)
         deltaJ = delta(MmaxInv_J, MminInv_J)
+        #print(deltaJ)
 
         deltaMax = max(max(deltaI), max(deltaJ))
         try:
@@ -1488,15 +1518,18 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
             V = VmaxInv_I[index]
             N = NmaxInv_I[index]
             Mf = MmaxInv_I[index]
+            #print(Mf)
             Mt = TmaxInv_I[index]
         except:
             index = deltaJ.index(deltaMax)
             V = VmaxInv_J[index]
             N = NmaxInv_J[index]
             Mf = MmaxInv_J[index]
+            #print(Mf)
             Mt = TmaxInv_J[index]           
         
         N_ele = dictConci[i]['ele'][index]
+        #print(i, cdsNameMax, {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt})
         dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
 
         try:
@@ -1567,7 +1600,7 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
             Mt = TmaxInv_J[index]           
         
         N_ele = dictConci[i]['ele'][index]
-        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+        dictConci[i]['Sollecitazioni']['Momento torcente'][cdsNameMax] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
 
         try:
             index = deltaI.index(deltaMax)
@@ -1583,7 +1616,7 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
             Mt = TminInv_J[index]           
         
         N_ele = dictConci[i]['ele'][index]
-        dictConci[i]['Sollecitazioni']['Momento flettente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
+        dictConci[i]['Sollecitazioni']['Momento torcente'][cdsNameMin] = {'N_el': N_ele, 'N': N, 'T': V, 'Mf': Mf, 'Mt': Mt}
     
     return dictConci
 
@@ -1710,6 +1743,13 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
     except:
         print("Temperatura.xlsx No Exists")
 
+    #### C - Cedimenti
+    try:
+        dictLoad_c = importMultiLoad2_MIDAS(dictModel["Cedimenti"])
+        dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_c, 'C')
+    except:
+        print("File 07_Cedimenti.xlsx No Exists")
+
     #### Mf - Fatica
     #if ("06_Fatica.xlsx" in fileList):
         #print("File 06_Fatica.xlsx Exists")
@@ -1718,13 +1758,6 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
     #else:
         #print("File 06_fatica.xlsx No Exists")
     #devo lavorare sul massimo delta e non sul massimo della sollecitazione
-
-    #### C - Cedimenti
-    try:
-        dictLoad_c = importMultiLoad2_MIDAS(dictModel["Cedimenti"])
-        dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_c, 'C')
-    except:
-        print("File 07_Cedimenti.xlsx No Exists")
 
     NewDict = remove_nested_keys(dictConci, ['Mfat+', 'Mfat-'])
 
@@ -1741,11 +1774,11 @@ def Run_Export2Out_SuperFoglio(pathInput, pathOut, metodo = 2):
     dictConci = EleConcio(dictModel)
 
     #### G1-Permanenti
-    try:
-        dictLoad_g1 = importOneLoad_MIDAS(dictModel["G1"])
-        dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_g1, 'G1')
-    except:
-        print("G1 No Exists")
+    #try:
+    #    dictLoad_g1 = importOneLoad_MIDAS(dictModel["G1"])
+    #    dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_g1, 'G1')
+    #except:
+    #    print("G1 No Exists")
 
     #PlotConci(dictModel, dictConci)
     #print(dictModel['Point'])
@@ -1777,6 +1810,23 @@ def Run_Export2Out_SuperFoglio(pathInput, pathOut, metodo = 2):
 
     return 
 
-#PathIn = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src\00_UNICO.xlsx"
+def RunPlot(pathInput):
+    #path: della cartella che contiene i file excel
+    
+    #IMPORTAZIONE 
+    dictModel = importMidasData(pathInput)
+    dictConci = EleConcio(dictModel)
+    PlotConci(dictModel, dictConci)
+
+    return
+
+
+PathIn = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato\260_RG-CT_VI04_UNICO.xlsx" 
+#r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src\00_UNICO.xlsx"
 #PathOut = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src"
-#Run_Export1Out_SuperFoglio(PathIn, PathOut)
+PathOut = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato"
+
+Run_Export1Out_SuperFoglio(PathIn, PathOut)
+Run_Export2Out_SuperFoglio(PathIn, PathOut, metodo = 1)
+
+
