@@ -1821,12 +1821,12 @@ def RunPlot(pathInput):
     return
 
 
-PathIn = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato\260_RG-CT_VI04_UNICO.xlsx" 
-#r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src\00_UNICO.xlsx"
-#PathOut = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src"
-PathOut = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato"
+# PathIn = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato\260_RG-CT_VI04_UNICO.xlsx" 
+# #r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src\00_UNICO.xlsx"
+# #PathOut = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src"
+# PathOut = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato"
 
-Run_Export1Out_SuperFoglio(PathIn, PathOut)
-Run_Export2Out_SuperFoglio(PathIn, PathOut, metodo = 1)
+# Run_Export1Out_SuperFoglio(PathIn, PathOut)
+# Run_Export2Out_SuperFoglio(PathIn, PathOut, metodo = 1)
 
 
