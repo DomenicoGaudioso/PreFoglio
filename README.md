@@ -1,7 +1,5 @@
 # PreFoglio
 Trovare le sollecitazioni corrispondenti 
-![image](https://github.com/DomenicoGaudioso/PreFoglio/assets/43296235/58af50eb-3ac2-4556-a0a9-bb05289aa422)
-
 
 Algoritmo per individuare le massime e minime sollecitazioni per ogni concio (elemento) strutturale.
 Utilizzato per individuare il valor massimo e minimo nelle seguenti fasi:
@@ -12,3 +10,5 @@ Utilizzato per individuare il valor massimo e minimo nelle seguenti fasi:
 - Cedimenti
 - Mobili
 - Fatica
+
+![image](https://github.com/DomenicoGaudioso/PreFoglio/assets/43296235/58af50eb-3ac2-4556-a0a9-bb05289aa422)
