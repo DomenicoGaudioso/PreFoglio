@@ -14,14 +14,18 @@ import io
 ## INTERFACCIA 
 sg.theme('DarkBrown1')   # Add a little color to your windows
 # All the stuff inside your window. This is the PSG magic code compactor...
-layout = [[sg.Text('PreFoglioPy', size = (40, 1), justification = 'center', font='Courier 15', text_color='White')],
+layout = [[sg.Text('GaudiCose', size = (40, 1), justification = 'center', font='Courier 15', text_color='White')],
           [sg.Text('importazione delle sollecitazioni max e min nel SuperFoglio', size = (75, 1), justification = 'center', font='Courier 8', text_color='White')],
           [sg.T(' '*2)],
-          [sg.T('Source Folder Input '), sg.In(key='PathIn'), sg.FolderBrowse(target='PathIn')],
-          [sg.T('Source Folder Output'), sg.In(key='PathOut'), sg.FolderBrowse(target='PathOut')],
+          [sg.T('Excel  Input '), sg.In(key='PathIn'), sg.FileBrowse(target='PathIn')],
+          [sg.T('Folder Output'), sg.In(key='PathOut'), sg.FolderBrowse(target='PathOut')],
           [sg.T(' '*1)],
-          [sg.Text("NOTA 1: percorso della cartella contenente i dati e risultati esportati da MIDAS in {Folder Input}", size = (75, 2), justification='left', font='Courier 8', text_color='Grey')],
+          [sg.Text("NOTA 1: file excel contenente i dati e risultati esportati da MIDAS in {Folder Input}", size = (75, 2), justification='left', font='Courier 8', text_color='Grey')],
           [sg.Text("NOTA 2: in {Folder Output} indicare la cartella dove si sta lavorando cn il SuperFoglio", size = (75, 2), justification='left', font='Courier 8', text_color='Grey')],
+          [sg.T(' '*1)],
+          [sg.Combo([1, 2], default_value=1, key='metfat')],
+          [sg.Text("METODO 1: valori massimi e minimi corrisponti alla stessa sezione", size = (75, 1), justification='left', font='Courier 8', text_color='Grey')],
+          [sg.Text("METODO 2: valori massimi e minimi sul concio e non sulla stessa sezione", size = (75, 1), justification='left', font='Courier 8', text_color='Grey')],
           [sg.T(' '*1)],
           [sg.OK(size = (30, 1)), sg.Cancel(size = (30, 1))],
           [sg.T(' '*1)],
@@ -32,13 +36,13 @@ layout = [[sg.Text('PreFoglioPy', size = (40, 1), justification = 'center', font
           [sg.Text("per qualsiasi segnalazione rivolgersi all'autore"), sg.Text(' '*60)]]
 
 # Create the Window
-window = sg.Window('PreFoglioPy', layout, element_justification = 'c')
+window = sg.Window('GaudiCose', layout, element_justification = 'c')
 
 # Event Loop to process "events"
 while True:             
     event, values = window.read()
     namePC = os.environ['COMPUTERNAME']
-    pathSave = r'Z:\tools\script_ToPreFoglio\activity'
+    pathSave = r'Z:\tools\GaudiCose\activity'
     orario = time.strftime("%H:%M:%S")
     data = time.strftime("%d/%m/%Y")
     testo = "{};{};{}\n".format(namePC, data, orario)
@@ -64,10 +68,10 @@ while True:
             Run_Export1Out_SuperFoglio(PathIn, PathOut)
         except Exception as e:
             print( 'No write variecose NTC')
-            #captured_error.write(str(e))
+            captured_error.write(str(e))
 
         try:
-            Run_Export2Out_SuperFoglio(PathIn, PathOut, metodo = 2)
+            Run_Export2Out_SuperFoglio(PathIn, PathOut, metodo = values['metfat'])
         except Exception as e:
             print( 'No write variecoseFatica ')
 
