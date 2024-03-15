@@ -1,4 +1,4 @@
-# PreFoglio
+# GaudiCose
 Trovare le sollecitazioni corrispondenti 
 
 Algoritmo per individuare le massime e minime sollecitazioni per ogni concio (elemento) strutturale.
