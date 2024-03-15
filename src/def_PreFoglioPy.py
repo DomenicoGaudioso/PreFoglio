@@ -60,6 +60,7 @@ def importMidasData(path = None):
     # Filtra per includere solo le righe dove "Load" è "'q7.1-Termica-'" o "'q7.1-Termica+'"
     filtered_dfs["Temperatura"] = cds_df[cds_df['Load'].isin(['Temperatura(max)', 'Temperatura(min)'])]
     filtered_dfs["Cedimenti"] = cds_df[cds_df['Load'].isin(['Cedimenti(max)', 'Cedimenti(min)'])]
+    filtered_dfs["Vento"] = cds_df[cds_df['Load'].isin(['Vento(max)', 'Vento(min)'])]
 
     # Accedere ai dati del foglio 'Mobili'
     mobili_df = xls['Mobili']
@@ -70,6 +71,57 @@ def importMidasData(path = None):
     filtered_dfs["Fatica"] = mobili_df[mobili_df['Load'].apply(lambda x: x.startswith('F'))]
 
     return filtered_dfs
+
+def envelopeSLU(df_data):
+    c_g1 = 1.35 #pesi propi
+    c_g2 = 1.5 #permanenti portati
+    c_mc = 1.35 #mobili concentrati
+    c_md = 1.35 #mobili distribuiti
+    c_r = 1.2 #ritiro
+    c_c = 1.2 #cedimenti
+    c_t = 1.5*0.6 #temperatura
+    c_w = 1.5*0.6 #vento
+
+    colonne_da_moltiplicare = ["Axial",  "Shear-y",  "Shear-z",  "Torsion",  "Moment-y",  "Moment-z"]
+    g1 = df_data["G1"][colonne_da_moltiplicare].apply(lambda x: x * c_g1)
+    g1["Elem"] = df_data["G1"]["Elem"]
+    g1["Part"] = df_data["G1"]["Part"]
+
+    g2 = df_data["G2"][colonne_da_moltiplicare].apply(lambda x: x * c_g2)
+    g2["Elem"] = df_data["G2"]["Elem"]
+    g2["Part"] = df_data["G2"]["Part"]
+
+    r = df_data["Ritiro"][colonne_da_moltiplicare].apply(lambda x: x * c_r)
+    r["Elem"] = df_data["Ritiro"]["Elem"]
+    r["Part"] = df_data["Ritiro"]["Part"]
+
+    c = df_data["Cedimenti"][colonne_da_moltiplicare].apply(lambda x: x * c_c)
+
+
+    t = df_data["Temperatura"][colonne_da_moltiplicare].apply(lambda x: x * c_t)
+
+
+    #w = df_data["Vento"][colonne_da_moltiplicare].apply(lambda x: x * c_w)
+    mc = df_data["Tandem"][colonne_da_moltiplicare].apply(lambda x: x * c_mc)
+    md = df_data["Distr"][colonne_da_moltiplicare].apply(lambda x: x * c_md)
+
+
+    # Colonne da sommare
+    columns_to_sum = ["Axial", "Shear-y", "Shear-z", "Torsion", "Moment-y", "Moment-z"]
+    slu = pd.DataFrame()
+    # Somma delle colonne specificate
+    for col in columns_to_sum:
+        slu[col] = g1[f'{col}_df1'] + g2[f'{col}_df2']
+
+    slu = g1[colonne_da_moltiplicare] + g2[colonne_da_moltiplicare] #+ r[colonne_da_moltiplicare]
+
+
+    print(g1)
+    print(slu)
+
+
+
+    return
 
 def importOneLoad_MIDAS(df_Data):
     #path: percorso dove trovare il file excel di input
@@ -249,9 +301,10 @@ def EleConcio(dictModel):
         'Mf+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Mf-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'T+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'T-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'C+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'C-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
+        'V+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'V-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
         },  
 
-        'Momento flettente': {'G1+':{}, 'G1-':{},
+        'Momento flettente': {'G1+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G1-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
         'G2+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G2-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'R+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'R-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'Mfat+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Mfat-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
@@ -260,6 +313,7 @@ def EleConcio(dictModel):
         'Mf+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Mf-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'T+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'T-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'C+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'C-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
+        'V+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'V-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
         }, 
 
         'Taglio': {'G1+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G1-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
@@ -271,6 +325,7 @@ def EleConcio(dictModel):
         'Mf+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Mf-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'T+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'T-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'C+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'C-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
+        'V+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'V-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
         },  
 
         'Momento torcente': {'G1+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'G1-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
@@ -282,6 +337,7 @@ def EleConcio(dictModel):
         'Mf+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'Mf-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'T+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'T-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 
         'C+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'C-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
+        'V+':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0}, 'V-':{'N_el': 0, 'N': 0.0, 'T': 0.0, 'Mf': 0.0, 'Mt': 0.0},
         } }
 
     return dictConci
@@ -1721,6 +1777,13 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
     except:
         print("Ritiro No Exists")
 
+    #### V-VentoS
+    try:
+        dictLoad_V = importMultiLoad2_MIDAS(dictModel["Vento"])
+        dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_V, 'Mf')
+    except:
+        print("Vento No Exists")
+
     #### MQ - Mobili Tandem 
     #try:
     dictLoad_ts = importMultiLoad_MIDAS(dictModel["Tandem"])
@@ -1759,7 +1822,8 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
         #print("File 06_fatica.xlsx No Exists")
     #devo lavorare sul massimo delta e non sul massimo della sollecitazione
 
-    NewDict = remove_nested_keys(dictConci, ['Mfat+', 'Mfat-'])
+    NewDict = remove_nested_keys(dictConci, ['Mfat+', 'Mfat-', 'V+', 'V-'])
+    #NewDict = remove_nested_keys(dictConci, ['V+', 'V-'])
 
 
     writeOut_xlsx(NewDict, os.path.join(pathOut, "Output_GaudiCoseNTC_2023.xlsx")) 
@@ -1805,7 +1869,7 @@ def Run_Export2Out_SuperFoglio(pathInput, pathOut, metodo = 2):
         except:
             print("Fatica No Exists")
 
-    NewDict = remove_nested_keys(dictConci, ['Mf+', 'Mf-'])
+    NewDict = remove_nested_keys(dictConci, ['Mf+', 'Mf-', 'V+', 'V-'])
     writeOut_xlsx(NewDict, os.path.join(pathOut, "Output_GaudiCoseFatica_2023.xlsx")) 
 
     return 
@@ -1821,12 +1885,14 @@ def RunPlot(pathInput):
     return
 
 
-# PathIn = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato\260_RG-CT_VI04_UNICO.xlsx" 
+PathIn = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato\260_RG-CT_VI04_UNICO.xlsx" 
 # #r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src\00_UNICO.xlsx"
 # #PathOut = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src"
-# PathOut = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato"
+PathOut = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato"
 
-# Run_Export1Out_SuperFoglio(PathIn, PathOut)
-# Run_Export2Out_SuperFoglio(PathIn, PathOut, metodo = 1)
+Run_Export1Out_SuperFoglio(PathIn, PathOut)
+Run_Export2Out_SuperFoglio(PathIn, PathOut, metodo = 1)
 
-
+#dictModel = importMidasData(PathIn)
+#dictConci = EleConcio(dictModel)
+#envelopeSLU(dictModel)
