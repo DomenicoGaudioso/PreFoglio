@@ -2,6 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import io
 import xlsxwriter
 #from scipy.cluster.hierarchy import linkage, fcluster
 from collections import defaultdict
@@ -13,16 +14,17 @@ def delta(listMax, listMin):
         delta.append(delta_I)
     return delta
 
-def importMidasData(path = None):
+def importMidasData(path):
     #path: percorso dove trovare il file excel di input
-    if path == None:
-        path = "\Out_Midas\00_Info_Modello.xlsx"
+    # if path == None:
+    #     path = "\Out_Midas\00_Info_Modello.xlsx"
 
     # Leggere tutti i fogli in un dizionario
     # Le chiavi del dizionario sono i nomi dei fogli
     # Leggi solo i fogli specifici
+    
     specific_sheets = ['Point', 'Element', 'CDS', 'Mobili']
-    xls = pd.read_excel(path, sheet_name=specific_sheets)
+    xls = path
 
     # Ora puoi accedere a ogni foglio come un DataFrame dal dizionario
     #for sheet_name, df in xls.items():
@@ -60,7 +62,7 @@ def importMidasData(path = None):
     # Filtra per includere solo le righe dove "Load" è "'q7.1-Termica-'" o "'q7.1-Termica+'"
     filtered_dfs["Temperatura"] = cds_df[cds_df['Load'].isin(['Temperatura(max)', 'Temperatura(min)'])]
     filtered_dfs["Cedimenti"] = cds_df[cds_df['Load'].isin(['Cedimenti(max)', 'Cedimenti(min)'])]
-    filtered_dfs["Vento"] = cds_df[cds_df['Load'].isin(['Vento(max)', 'Vento(min)'])]
+    filtered_dfs["Varo"] = cds_df[cds_df['Load'].isin(['Varo(max)', 'Varo(min)'])]
 
     # Accedere ai dati del foglio 'Mobili'
     mobili_df = xls['Mobili']
@@ -69,6 +71,7 @@ def importMidasData(path = None):
     filtered_dfs["Tandem"] = mobili_df[mobili_df['Load'].apply(lambda x: x.startswith('T'))]
     filtered_dfs["Distr"] = mobili_df[mobili_df['Load'].apply(lambda x: x.startswith('D'))]
     filtered_dfs["Fatica"] = mobili_df[mobili_df['Load'].apply(lambda x: x.startswith('F'))]
+    filtered_dfs["Vento"] = mobili_df[mobili_df['Load'].apply(lambda x: x.startswith('V'))]
 
     return filtered_dfs
 
@@ -264,6 +267,7 @@ def EleConcio(dictModel):
     #Per identificare i punti iniziali e finali dei conci
     for i in dictConci:
         ele = dictConci[i]['ele']
+        #print("ele", dictConci[i]['ele'])
         coordI_X = []
         coordJ_X = []
         for j in ele:
@@ -386,7 +390,7 @@ def PlotConci(dictModel, dictConci):
 def Plot_CDS(dictModel, dictLoad):
     
     for i in dictLoad:
-        print(dictLoad[i])
+        #print(dictLoad[i])
         #point I and J
         pI = dictLoad[i]['I']['Part']
         pJ = dictLoad[i]['J']['Part']
@@ -451,6 +455,7 @@ def AssignCDS_concio(dictModel, dictConci, dictLoad, NameCDS):
         N_J, V_J, M_J, T_J = [], [], [], []
         for i in dictConci[j]['ele']:
             #point I and J
+            #print(i)
             pI = dictLoad[i]['I']['Part']
             pJ = dictLoad[i]['J']['Part']
             #print(pI)
@@ -1676,9 +1681,17 @@ def AssignCDSFatica_concio(dictModel, dictConci, dictLoad, NameCDS):
     
     return dictConci
 
-def writeOut_xlsx(dictConci, NameFile):
+def writeOut_xlsx(dictConci, NameFile=None):
     # Cretae a xlsx file
-    xlsx_File = xlsxwriter.Workbook(NameFile)
+# --- GESTIONE OUTPUT (Disco o Memoria) ---
+    if NameFile is None:
+        # Modalità Streamlit (In Memoria)
+        output_buffer = io.BytesIO()
+        xlsx_File = xlsxwriter.Workbook(output_buffer, {'in_memory': True})
+    else:
+        # Modalità Locale (Su Disco)
+        output_buffer = None
+        xlsx_File = xlsxwriter.Workbook(NameFile)
 
     # Add new worksheet
     sheet_days = xlsx_File.add_worksheet()
@@ -1690,7 +1703,10 @@ def writeOut_xlsx(dictConci, NameFile):
     cell_format2 = xlsx_File.add_format({'bold': True, 'font_color': '#000000', 'bg_color': '#CCFFCC'})
     cell_format3 = xlsx_File.add_format({'bold': False, 'font_color': '#000000', 'bg_color': '#FFFF99'})
 
-    for i in dictConci:
+    sorted_keys = sorted(list(dictConci.keys()))# Ordina in ordine crescente
+    #print("ciao", sorted_keys)
+    
+    for i in sorted_keys:
         sheet_days.write(row1, 0, 'Sezione numero:', cell_format1) #write numero sezione
         sheet_days.write(row1, 1, i, cell_format1) #write numero sezione
         for c in range(2, 6):
@@ -1730,10 +1746,15 @@ def writeOut_xlsx(dictConci, NameFile):
         
         row1 += 2
 
-    # Close the Excel file
+    # --- CHIUSURA E RITORNO ---
     xlsx_File.close()
     
-    return 
+    if output_buffer:
+        # Se siamo in Streamlit, torniamo i bytes
+        return output_buffer.getvalue()
+    else:
+        # Se siamo in locale, non torniamo nulla (il file è già su disco)
+        return None
 
 # ✅ function returns new dictionary (does NOT mutate original)
 
@@ -1749,17 +1770,38 @@ def remove_nested_keys(dictionary, keys_to_remove):
 
     return new_dict
 
-def Run_Export1Out_SuperFoglio(pathInput, pathOut):
+def Run_Export1Out_SuperFoglio(input_data):
     #path: della cartella che contiene i file excel
+    """
+    input_dfs: è un dizionario contenente i fogli dell'excel caricato.
+               Es: {'CDS': df_cds, 'Mobili': df_mobili, ...}
+    """
     
+# 1. ACQUISIZIONE DATI
+    # Se input_data è un dizionario (da Streamlit)
+    if isinstance(input_data, dict):
+        df_cds = input_data.get('CDS')
+        df_element = input_data.get('Element')
+    else:
+        # Fallback se passi un path (vecchio metodo)
+        df_cds = pd.read_excel(input_data, sheet_name='CDS')
+        # ... altri caricamenti
+    
+    if df_cds is None:
+            return None
     #IMPORTAZIONE 
-    dictModel = importMidasData(pathInput)
+    print("oK - 0")
+    dictModel = importMidasData(input_data)
+    print("oK - 1")
     dictConci = EleConcio(dictModel)
+    print("oK - 2")
 
     #### G1-Permanenti
     try:
         dictLoad_g1 = importOneLoad_MIDAS(dictModel["G1"])
+        print("oK - 3")
         dictConci = AssignCDS_concio(dictModel, dictConci, dictLoad_g1, 'G1')
+        print("oK - 4")
     except:
         print("G1 No Exists")
 
@@ -1778,11 +1820,11 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
         print("Ritiro No Exists")
 
     #### V-VentoS
-    try:
-        dictLoad_V = importMultiLoad2_MIDAS(dictModel["Vento"])
-        dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_V, 'Mf')
-    except:
-        print("Vento No Exists")
+    #try:
+    dictLoad_V = importMultiLoad_MIDAS(dictModel["Vento"])
+    dictConci = AssignCDSMulti_concio(dictModel, dictConci, dictLoad_V, 'Mf')
+    #except:
+        #print("Vento No Exists")
 
     #### MQ - Mobili Tandem 
     #try:
@@ -1826,15 +1868,21 @@ def Run_Export1Out_SuperFoglio(pathInput, pathOut):
     #NewDict = remove_nested_keys(dictConci, ['V+', 'V-'])
 
 
-    writeOut_xlsx(NewDict, os.path.join(pathOut, "Output_GaudiCoseNTC_2023.xlsx")) 
+    res = writeOut_xlsx(NewDict) #, os.path.join(pathOut, "Output_GaudiCoseNTC_2023.xlsx")) 
 
-    return 
+    return res 
 
-def Run_Export2Out_SuperFoglio(pathInput, pathOut, metodo = 2):
+def Run_Export2Out_SuperFoglio(input_dfs, metodo = 2):
     #path: della cartella che contiene i file excel
 
+# 1. Recupero dati
+    if 'Mobili' in input_dfs:
+        df_mobili = input_dfs['Mobili'].copy()
+    else:
+        return None
+    
     #IMPORTAZIONE 
-    dictModel = importMidasData(pathInput)
+    dictModel = importMidasData(input_dfs)
     dictConci = EleConcio(dictModel)
 
     #### G1-Permanenti
@@ -1870,9 +1918,41 @@ def Run_Export2Out_SuperFoglio(pathInput, pathOut, metodo = 2):
             print("Fatica No Exists")
 
     NewDict = remove_nested_keys(dictConci, ['Mf+', 'Mf-', 'V+', 'V-'])
-    writeOut_xlsx(NewDict, os.path.join(pathOut, "Output_GaudiCoseFatica_2023.xlsx")) 
+    
+    res = writeOut_xlsx(NewDict)
 
-    return 
+    return  res
+
+def Run_Export3Out_SuperFoglio(pathInput): ##VARO
+    #path: della cartella che contiene i file excel
+    
+    #IMPORTAZIONE 
+    dictModel = importMidasData(pathInput)
+    dictConci = EleConcio(dictModel)
+
+    #### G1-Permanenti
+    try:
+        dictLoad_varo = importMultiLoad2_MIDAS(dictModel["Varo"])
+        dictConci = AssignCDSMulti2_concio(dictModel, dictConci, dictLoad_varo, 'G1')
+    except:
+        print("G1 No Exists")
+
+    #### Mf - Fatica
+    #if ("06_Fatica.xlsx" in fileList):
+        #print("File 06_Fatica.xlsx Exists")
+        #dictLoad_fatica = importMultiLoad_MIDAS(os.path.join(pathInput, "06_Fatica.xlsx"))
+        #dictConci = AssignCDSFatica_concio(dictModel, dictConci, dictLoad_fatica, 'Mfat')
+    #else:
+        #print("File 06_fatica.xlsx No Exists")
+    #devo lavorare sul massimo delta e non sul massimo della sollecitazione
+
+    NewDict = remove_nested_keys(dictConci, ['Mfat+', 'Mfat-', 'V+', 'V-'])
+    #NewDict = remove_nested_keys(dictConci, ['V+', 'V-'])
+
+
+    res = writeOut_xlsx(NewDict) #os.path.join(pathOut, "Output_GaudiCoseVaro_2023.xlsx")
+
+    return res
 
 def RunPlot(pathInput):
     #path: della cartella che contiene i file excel
@@ -1885,14 +1965,3 @@ def RunPlot(pathInput):
     return
 
 
-#PathIn = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato\260_RG-CT_VI04_UNICO.xlsx" 
-# #r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src\00_UNICO.xlsx"
-# #PathOut = r"c:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\programmini_Py\script_ToPreFoglio\src"
-#PathOut = r"C:\Users\d.gaudioso\OneDrive - Matildi+Partners\02_script\00_Progetto Manhattan\260_RG-CT\VI04_PASSO MANDORLO SX\Calcolo\Impalcato"
-
-#Run_Export1Out_SuperFoglio(PathIn, PathOut)
-#Run_Export2Out_SuperFoglio(PathIn, PathOut, metodo = 1)
-
-#dictModel = importMidasData(PathIn)
-#dictConci = EleConcio(dictModel)
-#envelopeSLU(dictModel)
