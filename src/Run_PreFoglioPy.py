@@ -134,7 +134,7 @@ if uploaded_file:
             columns={'X':'X_j', 'Y':'Y_j', 'Z':'Z_j'}).drop(columns=['Node'])
 
         # --- TABS ---
-        tab_exp, tab_view = st.tabs(["💾 Generazione File", "📐 Visualizzazione Grafica"])
+        tab_exp, tab_view, tab_group = st.tabs(["💾 Generazione File", "📐 Visualizzazione Grafica", " work data"])
 
 # --- TAB 1: VISUALIZZAZIONE ---
         with tab_view:
@@ -265,6 +265,183 @@ if uploaded_file:
                     st.success("Fatto.")
                 except Exception as e:
                     st.error(f"Errore: {e}")
+                    
+        # --- TAB 3: LAVORO CON I DATI PER RIESPORTARLI ---
+        with tab_group:
+            print("ciao")
+            # 1. Lettura dei dati
+            elements_df = dfs["Element"]
+
+            # 2. Ordinamento per Proprietà (sezione) e ID Elemento
+            elements_df = elements_df.sort_values(by=['Property', 'Element']).reset_index(drop=True)
+
+            # 3. Calcolo della differenza tra l'ID corrente e il precedente all'interno della stessa Proprietà
+            elements_df['Diff'] = elements_df.groupby('Property')['Element'].diff()
+
+            # 4. Un nuovo gruppo inizia quando la differenza di ID non è 1 
+            # (il primo elemento di ogni Proprietà avrà Diff = NaN, che conta come True nel test != 1)
+            elements_df['NewGroup'] = (elements_df['Diff'] != 1).astype(int)
+
+            # 5. La somma cumulativa identifica un numero di sottogruppo incrementale per i blocchi contigui
+            elements_df['SubGroup'] = elements_df.groupby('Property')['NewGroup'].cumsum()
+
+            # 6. Creazione del nome finale del gruppo
+            elements_df['GroupName'] = 'group' + elements_df['Property'].astype(str) + '_' + elements_df['SubGroup'].astype(str)
+
+            # 7. Salvataggio del risultato
+            result_df = elements_df[['Element', 'Property', 'Node1', 'Node2', 'GroupName']]
+            #result_df.to_csv("Element_Groups.csv", index=False)
+            st.write(result_df)
+            
+            # Load the previously generated groups and the points
+            # Ensure groups are sorted by Element to maintain the sequence
+            groups_df = result_df.sort_values(by=['GroupName', 'Element'])
+            points_df = df_node
+
+            # Function to get I, K, J nodes for a group
+            def get_key_nodes(group):
+                # The nodes in order. 
+                # Since elements are contiguous, Node2 of elem i is Node1 of elem i+1.
+                # The full sequence of nodes is Node1 of all elements + Node2 of the last element.
+                nodes = group['Node1'].tolist() + [group['Node2'].iloc[-1]]
+                
+                n_nodes = len(nodes)
+                node_I = nodes[0]
+                node_J = nodes[-1]
+                node_K = nodes[n_nodes // 2] # Middle node
+                
+                return pd.Series({'Node_I': node_I, 'Node_K': node_K, 'Node_J': node_J})
+            
+            # Apply to each group
+            group_nodes = groups_df.groupby('GroupName').apply(get_key_nodes).reset_index()
+
+            # Now we need to get the coordinates for these nodes
+            # Merge for Node I
+            merged_I = pd.merge(group_nodes, points_df, left_on='Node_I', right_on='Node', how='left')
+            merged_I = merged_I.rename(columns={'X': 'X_I', 'Y': 'Y_I', 'Z': 'Z_I'}).drop(columns=['Node'])
+
+            # Merge for Node K
+            merged_K = pd.merge(merged_I, points_df, left_on='Node_K', right_on='Node', how='left')
+            merged_K = merged_K.rename(columns={'X': 'X_K', 'Y': 'Y_K', 'Z': 'Z_K'}).drop(columns=['Node'])
+
+            # Merge for Node J
+            final_df = pd.merge(merged_K, points_df, left_on='Node_J', right_on='Node', how='left')
+            final_df = final_df.rename(columns={'X': 'X_J', 'Y': 'Y_J', 'Z': 'Z_J'}).drop(columns=['Node'])
+
+            # Sort properly by Property and SubGroup
+            final_df['Property_Num'] = final_df['GroupName'].str.extract(r'group(\d+)_').astype(int)
+            final_df['SubGroup_Num'] = final_df['GroupName'].str.extract(r'_(\d+)').astype(int)
+            final_df = final_df.sort_values(['Property_Num', 'SubGroup_Num']).drop(columns=['Property_Num', 'SubGroup_Num']).reset_index(drop=True)
+
+            # Save to CSV
+            output_file = "Group_Coordinates"
+            st.write(final_df)
+            
+            # SOLLECITAZIONI
+            cds_df = dfs["CDS"]
+            mobili_df = dfs["Mobili"]
+
+            print("CDS columns:", cds_df.columns.tolist())
+            print("Mobili columns:", mobili_df.columns.tolist())
+
+            print("\nCDS head:")
+            print(cds_df.head(2))
+
+            print("\nMobili head:")
+            print(mobili_df.head(2))
+            
+            # Create a mapping from GroupName to its elements, first element, and last element
+            group_info = groups_df.groupby('GroupName').agg(
+                Elements=('Element', list),
+                First_Element=('Element', 'first'),
+                Last_Element=('Element', 'last')
+            ).reset_index()
+            
+            # Extract Property and Subgroup for sorting
+            group_info['Property_Num'] = group_info['GroupName'].str.extract(r'group(\d+)_').astype(int)
+            group_info['SubGroup_Num'] = group_info['GroupName'].str.extract(r'_(\d+)').astype(int)
+            
+            
+            # Ensure forces are numeric
+            force_cols = ['Axial', 'Shear-y', 'Shear-z', 'Torsion', 'Moment-y', 'Moment-z']
+            for col in force_cols:
+                cds_df[col] = pd.to_numeric(cds_df[col], errors='coerce').fillna(0)
+                mobili_df[col] = pd.to_numeric(mobili_df[col], errors='coerce').fillna(0)
+
+            # Function to get extreme value (max absolute value, keeping sign)
+            def get_extreme(series):
+                # Get index of max absolute value
+                if len(series) == 0:
+                    return 0
+                idx = series.abs().idxmax()
+                return series.loc[idx]
+
+            def process_forces(df, group_info, has_component=False):
+                # Join with groups_df to get GroupName for each element
+                df_merged = df.merge(groups_df[['Element', 'GroupName']], left_on='Elem', right_on='Element')
+                
+                groupby_cols = ['GroupName', 'Load', 'Component'] if has_component else ['GroupName', 'Load']
+                
+                results = []
+                
+                for name, group_data in df_merged.groupby(groupby_cols):
+                    g_name = name[0]
+                    # Get first and last element of this group
+                    g_info = group_info[group_info['GroupName'] == g_name].iloc[0]
+                    first_el = g_info['First_Element']
+                    last_el = g_info['Last_Element']
+                    
+                    # I forces: Elem == first_el and Part starts with 'I['
+                    i_data = group_data[(group_data['Elem'] == first_el) & (group_data['Part'].str.startswith('I['))]
+                    
+                    # J forces: Elem == last_el and Part starts with 'J['
+                    j_data = group_data[(group_data['Elem'] == last_el) & (group_data['Part'].str.startswith('J['))]
+                    
+                    res_row = list(name)
+                    
+                    # Append I forces
+                    for col in force_cols:
+                        val = i_data[col].values[0] if len(i_data) > 0 else np.nan
+                        res_row.append(val)
+                        
+                    # Append K (extreme) forces
+                    for col in force_cols:
+                        val = get_extreme(group_data[col])
+                        res_row.append(val)
+                        
+                    # Append J forces
+                    for col in force_cols:
+                        val = j_data[col].values[0] if len(j_data) > 0 else np.nan
+                        res_row.append(val)
+                        
+                    results.append(res_row)
+                    
+                cols = groupby_cols + [f"{c}_I" for c in force_cols] + [f"{c}_K" for c in force_cols] + [f"{c}_J" for c in force_cols]
+                res_df = pd.DataFrame(results, columns=cols)
+                    
+                # Sort logically
+                res_df['Property_Num'] = res_df['GroupName'].str.extract(r'group(\d+)_').astype(int)
+                res_df['SubGroup_Num'] = res_df['GroupName'].str.extract(r'_(\d+)').astype(int)
+                res_df = res_df.sort_values(['Property_Num', 'SubGroup_Num', 'Load']).drop(columns=['Property_Num', 'SubGroup_Num']).reset_index(drop=True)
+                
+                return res_df
+
+            cds_res = process_forces(cds_df, group_info, has_component=False)
+            mobili_res = process_forces(mobili_df, group_info, has_component=True)
+
+            # Save to CSV
+            #cds_res.to_csv("Sollecitazioni_CDS_Processed.csv", index=False)
+            #mobili_res.to_csv("Sollecitazioni_Mobili_Processed.csv", index=False)
+
+            print("CDS head:")
+            st.write(cds_res)
+            print("Mobili head:")
+            st.write(mobili_res)
+                        
+            
+            
+            
+            
 
 else:
     st.info("Attesa caricamento file Excel...")
