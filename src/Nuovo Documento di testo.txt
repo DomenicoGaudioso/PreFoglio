@@ -1,0 +1,2 @@
+cd Z:\tools\GaudiCose\src\App
+py -m streamlit run Run_PreFoglioPy.py

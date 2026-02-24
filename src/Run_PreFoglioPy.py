@@ -7,6 +7,7 @@ import io
 # Importa le tue funzioni modificate
 # Assicurati che def_PreFoglioPy.py sia nella stessa cartella
 from def_PreFoglioPy import *
+from def_ToPontiEC4 import *
 
 st.set_page_config(page_title="GaudiCose - FEM Viewer", layout="wide")
 
@@ -437,11 +438,44 @@ if uploaded_file:
             st.write(cds_res)
             print("Mobili head:")
             st.write(mobili_res)
-                        
             
+            ## CREAZIONE FILE PONTI EC4
             
+            button_ec4 = st.button("esporta EC4")
+            button_mix = st.button("esporta mixBridge")
             
-            
+            if button_ec4:
+                #final_df #modello ridotto
+                
+                df_elem = dfs['Element'][['Element', 'Node1', 'Node2']].rename(columns={'Element': 'Elem'})
+                df_node = dfs['Point'][['Node', 'X', 'Y', 'Z']]
+                df_secEC4 = dfs['sectionEC4'] 
+        
+                try:
+                    # 1. Genera il dizionario delle sezioni
+                    Model_conci = ModelConci_AddSection(final_df, df_secEC4)
+                    
+                    # 2. Genera il testo del file .bak (senza scriverlo su disco)
+                    file_content = wPontiEC4_Model(final_df, Model_conci)
+                    
+                    # 3. Crea il pulsante di download per il modello
+                    st.download_button(
+                        label="⬇️ Scarica il Modello EC4",
+                        data=file_content,
+                        file_name="modelEC4.txt",
+                        mime="text/plain"
+                    )
+                    st.success("Modello EC4 generato! Clicca il pulsante qui sopra per scaricarlo.")
+                except Exception as e:
+                    st.error(f"Errore generazione Modello: {e}")
+                    
+                try:
+                    # Aggiunti PathOut e nameFile per permettere il salvataggio
+                    comb_PontiEC4(final_df, pathCDS, PathOut, nameFile)
+                    st.success("Sollecitazioni EC4 generate con successo!")
+                except Exception as e:
+                    st.error(f"Errore generazione Sollecitazioni: {e}")
+                          
 
 else:
     st.info("Attesa caricamento file Excel...")
