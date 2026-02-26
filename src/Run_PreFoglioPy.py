@@ -2,12 +2,197 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+#from kaleido import *
 import io
 
 # Importa le tue funzioni modificate
 # Assicurati che def_PreFoglioPy.py sia nella stessa cartella
 from def_PreFoglioPy import *
 from def_ToPontiEC4 import *
+
+import matplotlib.pyplot as plt
+from docx import Document
+from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH  # <-- NUOVO: serve per centrare la didascalia
+
+import matplotlib.pyplot as plt
+from docx import Document
+from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+import io
+import numpy as np
+import pandas as pd
+
+def crea_immagine_matplotlib(df_geom, df_res, piano, titolo, is_mobili=False):
+    """Genera un grafico Matplotlib per Taglio o Momento. Se is_mobili=True disegna max (blu) e min (rosso)."""
+    fig, ax = plt.subplots(figsize=(8, 4))
+    
+    # Gli assi geometrici dipendono ancora dal piano scelto per disegnare l'asta correttamente
+    col_x, col_y = ('X', 'Z') if piano == 'XZ' else ('Y', 'Z')
+    merged = pd.merge(df_geom, df_res, on='Elem', how='inner')
+
+    # Sotto-funzione per non ripetere il calcolo geometrico del trapezio
+    def disegna_poligono(x1, y1, x2, y2, v1, v2, colore):
+        if pd.isna(v1): v1 = 0
+        if pd.isna(v2): v2 = 0
+        if abs(v1) >= 0.001 or abs(v2) >= 0.001:
+            dx, dy = x2 - x1, y2 - y1
+            L = np.sqrt(dx**2 + dy**2)
+            if L > 0:
+                nx, ny = -dy / L, dx / L
+                ax.fill([x1, x1 + nx * v1, x2 + nx * v2, x2], 
+                        [y1, y1 + ny * v1, y2 + ny * v2, y2], 
+                        color=colore, alpha=0.4, edgecolor=colore)
+
+    for _, row in merged.iterrows():
+        x1, y1 = row[f'{col_x}_i'], row[f'{col_y}_i']
+        x2, y2 = row[f'{col_x}_j'], row[f'{col_y}_j']
+        
+        # Disegna l'asta base
+        ax.plot([x1, x2], [y1, y2], color='black', linewidth=1)
+
+        if is_mobili:
+            # Inviluppo: Disegna contemporaneamente il Max e il Min
+            disegna_poligono(x1, y1, x2, y2, row.get('Val_I_max', 0), row.get('Val_J_max', 0), 'blue')
+            disegna_poligono(x1, y1, x2, y2, row.get('Val_I_min', 0), row.get('Val_J_min', 0), 'red')
+        else:
+            # CDS standard: Disegna un solo trapezio
+            v1, v2 = row.get('Val_I', 0), row.get('Val_J', 0)
+            colore = 'red' if (v1 + v2) / 2 < 0 else 'blue'
+            disegna_poligono(x1, y1, x2, y2, v1, v2, colore)
+
+    ax.set_title(titolo)
+    ax.invert_yaxis()
+    ax.grid(True, linestyle='--', alpha=0.5)
+    
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format='png', dpi=150)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+def genera_report_word_matplotlib(dfs, geom, piano):
+    """Genera il documento Word inserendo SOLO le immagini e le relative didascalie."""
+    doc = Document()
+    
+    # FISSO: Calcoliamo e mostriamo solo Taglio Vz e Momento My
+    grandezze = ['Shear-z', 'Moment-y']
+
+    for sheet_name in ['CDS', 'Mobili']:
+        if sheet_name not in dfs: continue
+            
+        df_data = dfs[sheet_name].copy() 
+        if 'Load' not in df_data.columns: continue
+
+        # --- GESTIONE MOBILI ---
+        if sheet_name == 'Mobili':
+            # CORRETTO: (?i) all'inizio dell'espressione regolare
+            df_data['Base_Load'] = df_data['Load'].astype(str).str.replace(r'(?i)\s*\((max|min)\)', '', regex=True)
+            
+            for base_load in df_data['Base_Load'].unique():
+                df_base = df_data[df_data['Base_Load'] == base_load]
+                if df_base.empty: continue
+                
+                for val_col in grandezze:
+                    if val_col not in df_base.columns: continue
+                    
+                    if 'Component' in df_base.columns:
+                        df_comp = df_base[df_base['Component'] == val_col]
+                    else:
+                        df_comp = df_base
+                        
+                    if df_comp.empty: continue
+                    
+                    # CORRETTO: (?i) all'inizio dell'espressione regolare
+                    df_max = df_comp[df_comp['Load'].astype(str).str.contains(r'(?i)\(max\)', regex=True)]
+                    df_min = df_comp[df_comp['Load'].astype(str).str.contains(r'(?i)\(min\)', regex=True)]
+                    
+                    res_list = []
+                    elems = set(df_comp['Elem'].unique())
+                    
+                    for elem in elems:
+                        elem_max = df_max[df_max['Elem'] == elem]
+                        elem_min = df_min[df_min['Elem'] == elem]
+                        
+                        # Max
+                        if not elem_max.empty:
+                            i_max = elem_max[elem_max['Part'].astype(str).str.startswith('I', na=False)][val_col]
+                            j_max = elem_max[elem_max['Part'].astype(str).str.startswith('J', na=False)][val_col]
+                            if i_max.empty: i_max = elem_max[val_col]
+                            if j_max.empty: j_max = elem_max[val_col]
+                            v_i_max = i_max.iloc[0] if not i_max.empty else 0
+                            v_j_max = j_max.iloc[-1] if not j_max.empty else 0
+                        else:
+                            v_i_max = v_j_max = 0
+                            
+                        # Min
+                        if not elem_min.empty:
+                            i_min = elem_min[elem_min['Part'].astype(str).str.startswith('I', na=False)][val_col]
+                            j_min = elem_min[elem_min['Part'].astype(str).str.startswith('J', na=False)][val_col]
+                            if i_min.empty: i_min = elem_min[val_col]
+                            if j_min.empty: j_min = elem_min[val_col]
+                            v_i_min = i_min.iloc[0] if not i_min.empty else 0
+                            v_j_min = j_min.iloc[-1] if not j_min.empty else 0
+                        else:
+                            v_i_min = v_j_min = 0
+                            
+                        res_list.append({
+                            'Elem': elem,
+                            'Val_I_max': v_i_max, 'Val_J_max': v_j_max,
+                            'Val_I_min': v_i_min, 'Val_J_min': v_j_min
+                        })
+                        
+                    if not res_list: continue
+                    res_extract = pd.DataFrame(res_list)
+                    
+                    # Genera l'immagine (titolo interno al grafico)
+                    titolo_plot = f"{val_col} Inviluppo"
+                    img_buffer = crea_immagine_matplotlib(geom, res_extract, piano, titolo_plot, is_mobili=True)
+                    
+                    # --- INSERIMENTO NEL WORD ---
+                    doc.add_picture(img_buffer, width=Inches(6.0))
+                    
+                    # Inserisce la didascalia sotto e la centra
+                    testo_didascalia = f"Figura: {sheet_name} - {base_load} - {val_col} (Inviluppo)"
+                    p = doc.add_paragraph(testo_didascalia)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    doc.add_paragraph("")
+
+        # --- GESTIONE CDS ---
+        else:
+            for load in df_data['Load'].unique():
+                df_load = df_data[df_data['Load'] == load]
+                if df_load.empty: continue
+                
+                for val_col in grandezze:
+                    if val_col not in df_load.columns: continue
+                    
+                    grouped = df_load.groupby('Elem')[val_col]
+                    res_extract = pd.DataFrame({
+                        'Val_I': grouped.first(),
+                        'Val_J': grouped.last()
+                    }).reset_index()
+                    
+                    # Genera l'immagine
+                    titolo_plot = f"{val_col}"
+                    img_buffer = crea_immagine_matplotlib(geom, res_extract, piano, titolo_plot, is_mobili=False)
+                    
+                    # --- INSERIMENTO NEL WORD ---
+                    doc.add_picture(img_buffer, width=Inches(6.0))
+                    
+                    # Inserisce la didascalia sotto e la centra
+                    testo_didascalia = f"Figura: {sheet_name} - {load} - {val_col}"
+                    p = doc.add_paragraph(testo_didascalia)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    doc.add_paragraph("")
+
+    word_io = io.BytesIO()
+    doc.save(word_io)
+    word_io.seek(0)
+    return word_io
+
 
 st.set_page_config(page_title="GaudiCose - FEM Viewer", layout="wide")
 
@@ -106,9 +291,9 @@ def calcola_diagrammi(df_geom, df_res, piano, componente):
     return traces
 
 # --- INTERFACCIA ---
-st.title("🏗️ Analisi Sollecitazioni & Export")
+st.title("🏗️ CDSEditing")
 
-uploaded_file = st.sidebar.file_uploader("Carica Excel Input (MIDAS)", type=["xlsx"])
+uploaded_file = st.sidebar.file_uploader("Carica Excel Input", type=["xlsx"])
 
 if uploaded_file:
     # Caricamento Excel in Dizionario
@@ -229,13 +414,38 @@ if uploaded_file:
                         plot_bgcolor="white",
                         hovermode="closest"
                     )
+                    fig.update_yaxes(autorange="reversed")
                     st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Inverti asse Y (negativo sopra, positivo sotto)
+                         
+# --- SEZIONE EXPORT WORD CON MATPLOTLIB ---
+            st.divider()
+            st.subheader("📄 Generazione Report CDS")
+            st.write("Genera un documento Word con i grafici di Taglio e Momento.")
+            
+            if st.button("Genera Report Word"):
+                with st.spinner("Creazione dei grafici in corso... (L'operazione richiede qualche secondo)"):
+                    try:
+                        word_file = genera_report_word_matplotlib(dfs, geom, sel_plane)
+                        
+                        st.download_button(
+                            label="📥 Scarica Report_Sollecitazioni.docx",
+                            data=word_file,
+                            file_name=f"Report_Sollecitazioni_{sel_plane}.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                        st.success("Report Word generato! Clicca il pulsante per scaricarlo.")
+                    except Exception as e:
+                        st.error(f"Errore durante l'esportazione Word: {e}")
+                    
+
 
         # TAB 2: EXPORT
         with tab_exp:
             st.write("Usa i pulsanti per ottenere le massime e minimi sollecitazioni per ogni concio")
             
-            st.subheader("Export 1 (Standard)", divider=True)
+            st.subheader("Export 1 (SLU)", divider=True)
             if st.button("Export Standard"):
                 try:
                     # Passiamo 'dfs' come input_data
@@ -251,7 +461,7 @@ if uploaded_file:
                 except Exception as e:
                     st.error(f"Errore: {e}")
 
-            st.subheader("Export 2 (Opzionale)", divider=True)
+            st.subheader("Export 2 (Fatica)", divider=True)
             metodo = st.selectbox("Metodo", [1, 2])
             if st.button("Export Fatica"):
                 try:
@@ -342,14 +552,14 @@ if uploaded_file:
             cds_df = dfs["CDS"]
             mobili_df = dfs["Mobili"]
 
-            print("CDS columns:", cds_df.columns.tolist())
-            print("Mobili columns:", mobili_df.columns.tolist())
+            #print("CDS columns:", cds_df.columns.tolist())
+            #print("Mobili columns:", mobili_df.columns.tolist())
 
-            print("\nCDS head:")
-            print(cds_df.head(2))
+            #print("\nCDS head:")
+            #print(cds_df.head(2))
 
-            print("\nMobili head:")
-            print(mobili_df.head(2))
+            #print("\nMobili head:")
+            #print(mobili_df.head(2))
             
             # Create a mapping from GroupName to its elements, first element, and last element
             group_info = groups_df.groupby('GroupName').agg(
