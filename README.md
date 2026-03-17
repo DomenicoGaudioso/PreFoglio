@@ -1,9 +1,5 @@
-# GaudiCose
-<img width="1456" height="720" alt="Gemini_Generated_Image_f1pjebf1pjebf1pj" src="https://github.com/user-attachments/assets/875f452e-5d80-4c97-b632-a6b13e7052c7" />
-
 # 🌉 GaudiCose
-
-![GaudiCose Banner](link-alla-tua-immagine-banner.png)
+<img width="1456" height="720" alt="Gemini_Generated_Image_f1pjebf1pjebf1pj" src="https://github.com/user-attachments/assets/875f452e-5d80-4c97-b632-a6b13e7052c7" />
 
 ## 📖 Descrizione
 **GaudiCose** è un algoritmo computazionale avanzato progettato per l'analisi strutturale. Il suo obiettivo principale è individuare con precisione le massime e le minime sollecitazioni per ogni singolo concio (elemento strutturale) all'interno di una struttura. 
