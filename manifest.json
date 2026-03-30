@@ -1,14 +1,14 @@
 {
-  "name": "PreFoglio",
+  "name": "prefoglio",
   "build_context": "PreFoglio",
-  "icon": "rectangle-circle",
+  "icon": "shredder",
   "title": {
     "en": "PreFoglio",
     "it": "PreFoglio"
   },
   "description": {
-    "en": "PreSheet helps you find and manage the corresponding stresses for engineering or structural analyses by processing data from an xlsx sheet.",
-    "it": "PreFoglio aiuta a trovare e gestire le sollecitazioni corrispondenti per analisi ingegneristiche o strutturali, elaborando dati da un foglio xlsx."
+    "en": "PreSheet helps you find and manage corresponding stresses for engineering or structural analyses by processing data on a sheet.",
+    "it": "PreFoglio aiuta a trovare e gestire le sollecitazioni corrispondenti per analisi ingegneristiche o strutturali, elaborando dati su un foglio."
   },
   "required_subscription": "free"
 }
